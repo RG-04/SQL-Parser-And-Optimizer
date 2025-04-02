@@ -1,0 +1,1 @@
+SELECT name FROM (SELECT name FROM ok) JOIN department ON a = b
