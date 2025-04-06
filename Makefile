@@ -15,4 +15,7 @@ sql_parser.tab.c sql_parser.tab.h: sql_parser.y
 clean:
 	rm -f sql2ra lex.yy.c sql_parser.tab.c sql_parser.tab.h *.o
 
+test: all
+	./sql2ra test.sql
+
 .PHONY: all clean
