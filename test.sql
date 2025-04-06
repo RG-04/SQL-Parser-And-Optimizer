@@ -1,1 +1,1 @@
-SELECT name FROM (SELECT name FROM ok) JOIN department ON a = b JOIN table2 ON c = d
+SELECT name, product FROM customers JOIN temp ON id = customer_id WHERE temp > abc AND temp2 < bcd
