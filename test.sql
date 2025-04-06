@@ -1,1 +1,1 @@
-SELECT name FROM (SELECT name FROM ok) JOIN department ON a = b
+SELECT name FROM (SELECT name FROM ok) JOIN department ON a = b JOIN table2 ON c = d
