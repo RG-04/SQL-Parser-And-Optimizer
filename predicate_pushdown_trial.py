@@ -1,311 +1,5 @@
-import ply.lex as lex
-import ply.yacc as yacc
+import json
 import sys
-
-# ------------------ Lexer ------------------ #
-tokens = (
-    'SELECT', 'FROM', 'WHERE', 'JOIN', 'ON',
-    'AS', 'AND', 'OR', 'INNER', 'LEFT', 'RIGHT', 'OUTER', 'CROSS',
-    'DOT', 'COMMA', 'EQUALS', 'LT', 'GT', 'LE', 'GE', 'NE',
-    'LPAREN', 'RPAREN',
-    'IDENTIFIER', 'STRING', 'INTEGER', 'FLOAT',
-    'ASTERISK',
-)
-
-# Regular expressions for simple tokens
-t_COMMA = r','
-t_DOT = r'\.'
-t_EQUALS = r'='
-t_LT = r'<'
-t_GT = r'>'
-t_LE = r'<='
-t_GE = r'>='
-t_NE = r'<>|!='
-t_LPAREN = r'\('
-t_RPAREN = r'\)'
-t_ASTERISK = r'\*'
-t_ignore = ' \t\n'
-
-# Define reserved words
-reserved = {
-    'select': 'SELECT',
-    'from': 'FROM',
-    'where': 'WHERE',
-    'join': 'JOIN',
-    'on': 'ON',
-    'as': 'AS',
-    'and': 'AND',
-    'or': 'OR',
-    'inner': 'INNER',
-    'left': 'LEFT',
-    'right': 'RIGHT',
-    'outer': 'OUTER',
-    'cross': 'CROSS',
-}
-
-# Case-insensitive SQL keywords
-def t_SELECT(t):
-    r'[Ss][Ee][Ll][Ee][Cc][Tt]'
-    return t
-
-def t_FROM(t):
-    r'[Ff][Rr][Oo][Mm]'
-    return t
-
-def t_WHERE(t):
-    r'[Ww][Hh][Ee][Rr][Ee]'
-    return t
-
-def t_JOIN(t):
-    r'[Jj][Oo][Ii][Nn]'
-    return t
-
-def t_ON(t):
-    r'[Oo][Nn]'
-    return t
-
-def t_AS(t):
-    r'[Aa][Ss]'
-    return t
-
-def t_AND(t):
-    r'[Aa][Nn][Dd]'
-    return t
-
-def t_OR(t):
-    r'[Oo][Rr]'
-    return t
-
-def t_INNER(t):
-    r'[Ii][Nn][Nn][Ee][Rr]'
-    return t
-
-def t_LEFT(t):
-    r'[Ll][Ee][Ff][Tt]'
-    return t
-
-def t_RIGHT(t):
-    r'[Rr][Ii][Gg][Hh][Tt]'
-    return t
-
-def t_OUTER(t):
-    r'[Oo][Uu][Tt][Ee][Rr]'
-    return t
-
-def t_CROSS(t):
-    r'[Cc][Rr][Oo][Ss][Ss]'
-    return t
-
-def t_FLOAT(t):
-    r'\d+\.\d+'
-    t.value = float(t.value)
-    return t
-
-def t_INTEGER(t):
-    r'\d+'
-    t.value = int(t.value)
-    return t
-
-def t_STRING(t):
-    r'\"[^\"]*\"|\'[^\']*\''
-    # Remove the quotes
-    t.value = t.value[1:-1]
-    return t
-
-def t_IDENTIFIER(t):
-    r'[a-zA-Z_][a-zA-Z0-9_]*'
-    t.type = reserved.get(t.value.lower(), 'IDENTIFIER')
-    return t
-
-def t_error(t):
-    print(f"Illegal character '{t.value[0]}'")
-    t.lexer.skip(1)
-
-lexer = lex.lex()
-
-# ------------------ Parser ------------------ #
-# Define precedence rules
-precedence = (
-    ('left', 'OR'),
-    ('left', 'AND'),
-    ('nonassoc', 'EQUALS', 'LT', 'GT', 'LE', 'GE', 'NE'),
-)
-
-def p_query(p):
-    '''query : SELECT select_list FROM table_expr where_clause'''
-    p[0] = {
-        'select': p[2],
-        'from': p[4],
-        'where': p[5]
-    }
-
-def p_select_list(p):
-    '''select_list : ASTERISK
-                   | column_list'''
-    if p[1] == '*':
-        p[0] = ['*']
-    else:
-        p[0] = p[1]
-
-def p_column_list(p):
-    '''column_list : column
-                   | column_list COMMA column'''
-    if len(p) == 2:
-        p[0] = [p[1]]
-    else:
-        p[0] = p[1] + [p[3]]
-
-def p_column(p):
-    '''column : column_reference
-              | column_reference AS IDENTIFIER
-              | column_reference IDENTIFIER'''
-    if len(p) == 2:
-        p[0] = p[1]
-    elif p[2].upper() == 'AS':
-        # SELECT col AS alias
-        p[0] = {'column': p[1], 'alias': p[3]}
-    else:
-        # SELECT col alias
-        p[0] = {'column': p[1], 'alias': p[2]}
-
-def p_column_reference(p):
-    '''column_reference : IDENTIFIER
-                        | IDENTIFIER DOT IDENTIFIER
-                        | IDENTIFIER DOT ASTERISK'''
-    if len(p) == 2:
-        p[0] = p[1]
-    elif p[3] == '*':
-        p[0] = f"{p[1]}.*"
-    else:
-        p[0] = f"{p[1]}.{p[3]}"
-
-def p_table_expr(p):
-    '''table_expr : table_primary
-                  | joined_table'''
-    p[0] = p[1]
-
-def p_table_primary(p):
-    '''table_primary : IDENTIFIER
-                     | IDENTIFIER AS IDENTIFIER
-                     | IDENTIFIER IDENTIFIER'''
-    if len(p) == 2:
-        p[0] = {'table': p[1], 'alias': p[1]}
-    elif p[2].upper() == 'AS':
-        # FROM table AS alias
-        p[0] = {'table': p[1], 'alias': p[3]}
-    else:
-        # FROM table alias
-        p[0] = {'table': p[1], 'alias': p[2]}
-
-def p_joined_table(p):
-    '''joined_table : table_expr join_type JOIN table_primary ON join_condition'''
-    p[0] = {
-        'join': {
-            'left': p[1],
-            'type': p[2],
-            'right': p[4],
-            'condition': p[6]
-        }
-    }
-
-def p_join_type(p):
-    '''join_type : INNER
-                 | LEFT
-                 | RIGHT
-                 | CROSS
-                 | '''
-    if len(p) == 1:
-        # Default is inner join
-        p[0] = 'INNER'
-    else:
-        p[0] = p[1].upper()
-
-def p_join_condition(p):
-    '''join_condition : comparison_expr'''
-    p[0] = p[1]
-
-def p_where_clause(p):
-    '''where_clause : WHERE search_condition
-                    | '''
-    if len(p) == 1:
-        p[0] = None
-    else:
-        p[0] = p[2]
-
-def p_search_condition(p):
-    '''search_condition : boolean_term
-                        | search_condition OR boolean_term'''
-    if len(p) == 2:
-        p[0] = p[1]
-    else:
-        p[0] = {'operator': 'OR', 'left': p[1], 'right': p[3]}
-
-def p_boolean_term(p):
-    '''boolean_term : boolean_factor
-                    | boolean_term AND boolean_factor'''
-    if len(p) == 2:
-        p[0] = p[1]
-    else:
-        p[0] = {'operator': 'AND', 'left': p[1], 'right': p[3]}
-
-def p_boolean_factor(p):
-    '''boolean_factor : comparison_expr
-                      | LPAREN search_condition RPAREN'''
-    if len(p) == 2:
-        p[0] = p[1]
-    else:
-        p[0] = p[2]
-
-def p_comparison_expr(p):
-    '''comparison_expr : column_reference EQUALS column_reference
-                       | column_reference EQUALS STRING
-                       | column_reference EQUALS INTEGER
-                       | column_reference EQUALS FLOAT
-                       | column_reference LT column_reference
-                       | column_reference LT STRING
-                       | column_reference LT INTEGER
-                       | column_reference LT FLOAT
-                       | column_reference GT column_reference
-                       | column_reference GT STRING
-                       | column_reference GT INTEGER
-                       | column_reference GT FLOAT
-                       | column_reference LE column_reference
-                       | column_reference LE STRING
-                       | column_reference LE INTEGER
-                       | column_reference LE FLOAT
-                       | column_reference GE column_reference
-                       | column_reference GE STRING
-                       | column_reference GE INTEGER
-                       | column_reference GE FLOAT
-                       | column_reference NE column_reference
-                       | column_reference NE STRING
-                       | column_reference NE INTEGER
-                       | column_reference NE FLOAT'''
-    
-    # Map tokens to operators
-    op_map = {
-        '=': 'EQUALS',
-        '<': 'LT',
-        '>': 'GT',
-        '<=': 'LE',
-        '>=': 'GE',
-        '<>': 'NE',
-        '!=': 'NE'
-    }
-    
-    op = p[2]
-    if isinstance(op, str) and op in op_map:
-        op = op_map[op]
-    
-    p[0] = {'operator': op, 'left': p[1], 'right': p[3]}
-
-def p_error(p):
-    if p:
-        print(f"Syntax error at '{p.value}'")
-    else:
-        print("Syntax error at EOF")
-
-parser = yacc.yacc()
 
 # ------------------ Logical Plan Nodes ------------------ #
 class LogicalPlanNode:
@@ -321,7 +15,7 @@ class LogicalPlanNode:
         indent = "  " * level
         s = f"{indent}{self.node_type}"
         if self.table:
-            s += f"({self.table}" + (f" AS {self.alias}" if self.alias != self.table else "") + ")"
+            s += f"({self.table}" + (f" AS {self.alias}" if self.alias and self.alias != self.table else "") + ")"
         if self.predicate:
             s += f" [{self.predicate}]"
         if self.columns:
@@ -332,84 +26,147 @@ class LogicalPlanNode:
         return s
 
 # ------------------ Logical Plan Builder ------------------ #
-def build_logical_plan(parsed_query):
-    from_clause = parsed_query['from']
-    where_clause = parsed_query.get('where')
-    select_cols = parsed_query.get('select', [])
-
-    # Create the logical plan based on the query structure
-    if 'join' in from_clause:
-        # Handle JOIN
-        join_info = from_clause['join']
-        left = build_table_reference(join_info['left'])
-        right = build_table_reference(join_info['right'])
-        
-        join_condition = format_condition(join_info['condition'])
-        current = LogicalPlanNode('JOIN', children=[left, right], predicate=join_condition)
-    else:
-        # Handle single table
-        current = build_table_reference(from_clause)
-
-    # Add WHERE clause if present
-    if where_clause:
-        condition = format_condition(where_clause)
-        current = LogicalPlanNode('FILTER', children=[current], predicate=condition)
-
-    # Add PROJECT (SELECT) node
-    formatted_cols = format_columns(select_cols)
-    current = LogicalPlanNode('PROJECT', children=[current], columns=formatted_cols)
-
-    return current
-
-def build_table_reference(table_ref):
-    if 'join' in table_ref:
-        # Recursive case for nested joins
-        join_info = table_ref['join']
-        left = build_table_reference(join_info['left'])
-        right = build_table_reference(join_info['right'])
-        
-        join_condition = format_condition(join_info['condition'])
-        return LogicalPlanNode('JOIN', children=[left, right], predicate=join_condition)
-    else:
-        # Base case: simple table
-        return LogicalPlanNode('SCAN', table=table_ref['table'], alias=table_ref['alias'])
-
-def format_condition(condition):
-    if isinstance(condition, dict):
-        if 'operator' in condition:
-            if condition['operator'] in ('AND', 'OR'):
-                left = format_condition(condition['left'])
-                right = format_condition(condition['right'])
-                return f"({left}) {condition['operator']} ({right})"
-            elif condition['operator'] == 'NOT':
-                operand = format_condition(condition['operand'])
-                return f"NOT ({operand})"
-            else:
-                # Binary comparison
-                left = condition['left']
-                right = condition['right']
-                
-                # Handle different right operand types
-                if isinstance(right, str) and not '.' in right:
-                    # It's a string literal
-                    right = f"'{right}'"
-                
-                return f"{left} {condition['operator']} {right}"
+def build_logical_plan_from_json(json_obj):
+    """
+    Build a logical plan from the provided JSON structure
+    """
+    if json_obj['type'] == 'select':
+        # Handle SELECT with WHERE clause (filter)
+        condition = format_condition_from_json(json_obj['condition'])
+        child_plan = build_logical_plan_from_json(json_obj['input'])
+        return LogicalPlanNode('FILTER', children=[child_plan], predicate=condition)
     
-    # If it's not a dict or doesn't have the expected structure
-    return str(condition)
+    elif json_obj['type'] == 'project':
+        # Handle PROJECT (SELECT columns)
+        columns = format_columns_from_json(json_obj['columns'])
+        child_plan = build_logical_plan_from_json(json_obj['input'])
+        return LogicalPlanNode('PROJECT', children=[child_plan], columns=columns)
+    
+    elif json_obj['type'] == 'join':
+        # Handle JOIN
+        left_plan = build_logical_plan_from_json(json_obj['left'])
+        right_plan = build_logical_plan_from_json(json_obj['right'])
+        condition = format_condition_from_json(json_obj['condition'])
+        return LogicalPlanNode('JOIN', children=[left_plan, right_plan], predicate=condition)
+    
+    elif json_obj['type'] == 'base_relation':
+        # Handle base table scan
+        tables = json_obj['tables']
+        if len(tables) == 1:
+            table_info = tables[0]
+            table_name = table_info['name']
+            alias = table_info.get('alias', table_name)
+            return LogicalPlanNode('SCAN', table=table_name, alias=alias)
+        else:
+            # Handle multiple tables if needed
+            raise ValueError("Multiple tables in base_relation not supported yet")
+    
+    elif json_obj['type'] == 'rename':
+        # Handle rename operation
+        input_plan = build_logical_plan_from_json(json_obj['input'])
+        # In our simplified model, we can treat it as adding an alias to a scan or join
+        input_plan.alias = json_obj['new_name']
+        return input_plan
+    
+    else:
+        raise ValueError(f"Unknown node type: {json_obj['type']}")
 
-def format_columns(columns):
+def format_columns_from_json(columns):
+    """
+    Format columns from JSON representation to string representation
+    """
     formatted = []
     for col in columns:
-        if isinstance(col, dict) and 'column' in col:
-            # Column with alias
-            formatted.append(f"{col['column']} AS {col['alias']}")
+        table = col.get('table', '')
+        attr = col.get('attr', '')
+        
+        if table and attr:
+            column_str = f"{table}.{attr}"
         else:
-            # Simple column
-            formatted.append(str(col))
+            column_str = attr
+            
+        formatted.append(column_str)
     
     return formatted
+
+def format_condition_from_json(condition):
+    """
+    Format condition from JSON representation to string representation
+    """
+    if not condition or 'type' not in condition:
+        return str(condition)
+    
+    condition_type = condition['type']
+    
+    # Map common condition types to operators
+    op_map = {
+        'EQ': '=',
+        'LT': '<',
+        'GT': '>',
+        'LE': '<=',
+        'GE': '>=',
+        'NE': '<>',
+        'AND': 'AND',
+        'OR': 'OR',
+        'NOT': 'NOT'
+    }
+    
+    if condition_type in ('AND', 'OR'):
+        left = format_condition_from_json(condition['left'])
+        right = format_condition_from_json(condition['right'])
+        operator = op_map.get(condition_type, condition_type)
+        return f"({left}) {operator} ({right})"
+    
+    elif condition_type == 'NOT':
+        operand = format_condition_from_json(condition.get('cond', {}))
+        return f"NOT ({operand})"
+    
+    elif condition_type in op_map:
+        left = format_operand(condition['left'])
+        right = format_operand(condition['right'])
+        operator = op_map.get(condition_type, condition_type)
+        return f"{left} {operator} {right}"
+    
+    else:
+        # If it's a custom or unknown condition type
+        return str(condition)
+
+def format_operand(operand):
+    """
+    Format an operand which could be a column reference or a literal
+    """
+    if isinstance(operand, dict):
+        if operand.get('type') == 'column':
+            # It's a column reference with explicit type
+            table = operand.get('table', '')
+            attr = operand.get('attr', '')
+            if table:
+                return f"{table}.{attr}"
+            return attr
+        elif operand.get('type') == 'int':
+            # It's an integer literal
+            return str(operand.get('value', 0))
+        elif operand.get('type') == 'float':
+            # It's a float literal
+            return str(operand.get('value', 0.0))
+        elif operand.get('type') == 'string':
+            # It's a string literal with explicit type
+            return f"'{operand.get('value', '')}'"
+        elif 'table' in operand and 'attr' in operand:
+            # It's a column reference without explicit type
+            return f"{operand['table']}.{operand['attr']}"
+        else:
+            # Some other structure
+            return str(operand)
+    elif isinstance(operand, str):
+        # It's a string literal
+        return f"'{operand}'"
+    elif isinstance(operand, (int, float)):
+        # It's a numeric literal
+        return str(operand)
+    else:
+        # It's some other literal
+        return str(operand)
 
 # ------------------ Predicate Pushdown ------------------ #
 def predicate_pushdown(plan):
@@ -435,100 +192,362 @@ def predicate_pushdown(plan):
         # Debug information
         print(f"Attempting to push down predicate: {predicate}")
         
-        if child.node_type == 'JOIN':
-            # Check if the predicate can be pushed to left or right child
-            left_child = child.children[0]
-            right_child = child.children[1]
+        # Helper function to extract table references from a predicate
+        def extract_table_references(pred_str):
+            references = []
+            # Split on spaces and parentheses to better handle expressions
+            parts = pred_str.replace('(', ' ').replace(')', ' ').split()
+            for part in parts:
+                if '.' in part:
+                    table = part.split('.')[0]
+                    references.append(table)
+            return set(references)
+        
+        # Helper function to find and wrap scan nodes with filters
+        def push_filter_to_scan(node, table_name, predicate):
+            if node.node_type == 'SCAN' and (node.table == table_name or node.alias == table_name):
+                # We found the scan, wrap it with a filter
+                print(f"Found SCAN for {table_name}, applying filter directly")
+                return LogicalPlanNode('FILTER', children=[node], predicate=predicate)
             
-            # Print debugging info
-            print(f"JOIN detected: Left alias = {left_child.alias}, Right alias = {right_child.alias}")
+            if not hasattr(node, 'children') or not node.children:
+                return node
             
-            # Check if predicate mentions the left child's alias
-            if left_child.alias and f"{left_child.alias}." in predicate:
-                print(f"Pushing predicate to left child (table: {left_child.table}, alias: {left_child.alias})")
-                left_with_filter = LogicalPlanNode('FILTER', 
-                                                  children=[left_child], 
-                                                  predicate=predicate)
-                child.children[0] = left_with_filter
-                # Return the JOIN node with the filter pushed down
+            # Find matching table in children
+            for i, child in enumerate(node.children):
+                if find_table_in_subtree(child, table_name):
+                    node.children[i] = push_filter_to_scan(child, table_name, predicate)
+                    return node
+            
+            # If not found in any child, return unchanged
+            return node
+        
+        # Helper to find a table in a subtree
+        def find_table_in_subtree(node, table_name):
+            if node.node_type == 'SCAN':
+                return node.table == table_name or node.alias == table_name
+            
+            if not hasattr(node, 'children') or not node.children:
+                return False
+                
+            return any(find_table_in_subtree(child, table_name) for child in node.children)
+        
+        # Helper to find table alias mappings
+        def get_table_aliases(node, aliases=None):
+            if aliases is None:
+                aliases = {}
+                
+            if node.node_type == 'SCAN' and node.alias and node.alias != node.table:
+                aliases[node.alias] = node.table
+                aliases[node.table] = node.table  # Also map table to itself
+            
+            if hasattr(node, 'children') and node.children:
+                for child in node.children:
+                    get_table_aliases(child, aliases)
+                    
+            return aliases
+        
+        # Check if this is an AND condition which we can split
+        if ' AND ' in predicate:
+            print("AND condition detected, splitting into separate predicates")
+            conditions = []
+            
+            # Improved AND condition splitting that properly handles parentheses
+            def split_and_conditions(predicate_str):
+                # Helper function to check if parentheses are balanced in a string segment
+                def are_parentheses_balanced(s, start, end):
+                    count = 0
+                    for i in range(start, end + 1):
+                        if s[i] == '(':
+                            count += 1
+                        elif s[i] == ')':
+                            count -= 1
+                        if count < 0:  # Unbalanced
+                            return False
+                    return count == 0
+                
+                # Helper function to properly split on top-level AND operators
+                def proper_split(s):
+                    print(f"Processing: {s}")
+                    
+                    # Remove outer parentheses if they enclose the entire string
+                    if s.startswith('(') and s.endswith(')') and are_parentheses_balanced(s, 1, len(s) - 2):
+                        return proper_split(s[1:-1].strip())
+                    
+                    # Find top-level AND operators (not inside parentheses)
+                    level = 0
+                    and_positions = []
+                    
+                    for i in range(len(s) - 4):  # -4 to leave room for " AND"
+                        if s[i] == '(':
+                            level += 1
+                        elif s[i] == ')':
+                            level -= 1
+                        
+                        # Check for AND at level 0 (not inside parentheses)
+                        if level == 0 and i + 5 <= len(s) and s[i:i+5] == ' AND ':
+                            and_positions.append(i)
+                    
+                    if and_positions:
+                        # Split the string at each AND position
+                        last_pos = 0
+                        for pos in and_positions:
+                            part = s[last_pos:pos].strip()
+                            if part:
+                                proper_split(part)
+                            last_pos = pos + 5  # Skip " AND "
+                        
+                        # Don't forget the last part
+                        last_part = s[last_pos:].strip()
+                        if last_part:
+                            proper_split(last_part)
+                    else:
+                        # No top-level AND, add the whole condition
+                        conditions.append(s)
+                
+                proper_split(predicate_str)
+                return conditions
+            
+            conditions = split_and_conditions(predicate)
+            print(f"Split into {len(conditions)} separate conditions: {conditions}")
+            
+            # Get table aliases
+            aliases = get_table_aliases(plan)
+            print(f"Table aliases: {aliases}")
+                
+            # Process the project node case
+            if child.node_type == 'PROJECT':
+                # Apply filters below the projection
+                filtered_child = child.children[0]
+                for cond in conditions:
+                    filtered_child = LogicalPlanNode('FILTER', children=[filtered_child], predicate=cond)
+                child.children[0] = predicate_pushdown(filtered_child)
                 return child
-            # Check if predicate mentions the right child's alias
-            elif right_child.alias and f"{right_child.alias}." in predicate:
-                print(f"Pushing predicate to right child (table: {right_child.table}, alias: {right_child.alias})")
-                right_with_filter = LogicalPlanNode('FILTER', 
-                                                   children=[right_child], 
-                                                   predicate=predicate)
-                child.children[1] = right_with_filter
-                # Return the JOIN node with the filter pushed down
+                
+            # Map table names to their conditions
+            table_conditions = {}
+            multi_table_conditions = []
+            
+            for cond in conditions:
+                tables = extract_table_references(cond)
+                if len(tables) == 1:
+                    table_name = list(tables)[0]
+                    print(f"Condition '{cond}' references single table: {table_name}")
+                    
+                    # Resolve table name if it's an alias
+                    actual_table = aliases.get(table_name, table_name)
+                    
+                    # Add to table_conditions dictionary
+                    if actual_table not in table_conditions:
+                        table_conditions[actual_table] = []
+                    table_conditions[actual_table].append(cond)
+                else:
+                    # This condition references multiple tables or no tables
+                    multi_table_conditions.append(cond)
+            
+            print(f"Table conditions: {table_conditions}")
+            print(f"Multi-table conditions: {multi_table_conditions}")
+            
+            # First apply single-table conditions
+            result = child
+            for table_name, conds in table_conditions.items():
+                for cond in conds:
+                    # Push this condition to the appropriate scan
+                    result = push_filter_to_scan(result, table_name, cond)
+            
+            # Then apply multi-table conditions at the top level
+            for cond in multi_table_conditions:
+                result = LogicalPlanNode('FILTER', children=[result], predicate=cond)
+            
+            return result
+            
+        # For non-AND conditions
+        referenced_tables = extract_table_references(predicate)
+        print(f"Tables referenced in predicate: {referenced_tables}")
+        
+        if len(referenced_tables) == 1:
+            # The predicate only references a single table, we can push it down
+            table_name = list(referenced_tables)[0]
+            print(f"Trying to push predicate down to table: {table_name}")
+            
+            # Handle the PROJECT node case - push the filter below the projection
+            if child.node_type == 'PROJECT':
+                child.children[0] = predicate_pushdown(
+                    LogicalPlanNode('FILTER', children=[child.children[0]], predicate=predicate)
+                )
                 return child
-            else:
-                print(f"Could not push down predicate: {predicate} - no matching alias found")
-                # Cannot push down, keep filter above join
-                return plan
-        elif child.node_type == 'SCAN':
-            # If child is a SCAN, we can merge the filter with it
-            print(f"Merging filter with SCAN on table {child.table}")
-            child.predicate = predicate
-            return child
+            
+            # Apply the recursive filter pushing
+            if child.node_type in ['JOIN', 'FILTER']:
+                modified_child = push_filter_to_scan(child, table_name, predicate)
+                return modified_child
+            elif child.node_type == 'SCAN' and (child.table == table_name or child.alias == table_name):
+                # Direct filter on scan
+                return LogicalPlanNode('FILTER', children=[child], predicate=predicate)
+        
+        # If we can't determine which table the predicate belongs to, or it spans
+        # multiple tables, keep the filter where it is
+        return plan
             
     return plan
 
-# ------------------ Entry Point ------------------ #
-def parse_sql(query):
-    try:
-        # Parse the query
-        parsed_query = parser.parse(query)
-        if not parsed_query:
-            print("Parsing failed.")
-            return None, None
-        
-
-        print("Parsed Query:")
-        print(parsed_query)
-
-        # Build and optimize the plan
-        logical_plan = build_logical_plan(parsed_query)
-        optimized_plan = predicate_pushdown(logical_plan)
-        
-        return logical_plan, optimized_plan
-    
-    except Exception as e:
-        print(f"Error during parsing or optimization: {e}")
-        return None, None
-
-# Test case to demonstrate predicate pushdown
-if __name__ == "__main__":
-    # Create a complex query with pushable predicates
-    query = """
-    SELECT c.name, o.product 
-    FROM customers c 
-    JOIN ders o ON c.id = o.customer_id 
-    WHERE c.country = 'USA' AND o.amount > 1000
+# ------------------ Convert Logical Plan back to JSON ------------------ #
+def logical_plan_to_json(plan):
     """
+    Convert a logical plan back to JSON format
+    """
+    if plan.node_type == 'PROJECT':
+        columns = parse_columns_to_json(plan.columns)
+        input_json = logical_plan_to_json(plan.children[0])
+        
+        return {
+            "type": "project",
+            "columns": columns,
+            "input": input_json
+        }
     
-    print(f"Testing query: {query}")
+    elif plan.node_type == 'FILTER':
+        condition = parse_condition_to_json(plan.predicate)
+        input_json = logical_plan_to_json(plan.children[0])
+        
+        # Generate select-type syntax
+        if input_json.get("type") == "project":
+            return {
+                "type": "select",
+                "condition": condition,
+                "input": input_json
+            }
+        else:
+            # If not directly above a project, keep the filter type
+            return {
+                "type": "select",
+                "condition": condition,
+                "input": input_json
+            }
     
-    # Parse the query
-    import ply.lex as lex
-    import ply.yacc as yacc
+    elif plan.node_type == 'JOIN':
+        left_json = logical_plan_to_json(plan.children[0])
+        right_json = logical_plan_to_json(plan.children[1])
+        condition = parse_condition_to_json(plan.predicate)
+        
+        return {
+            "type": "join",
+            "condition": condition,
+            "left": left_json,
+            "right": right_json
+        }
     
-    # Build lexer and parser
-    lexer = lex.lex()
-    parser = yacc.yacc()
+    elif plan.node_type == 'SCAN':
+        return {
+            "type": "base_relation",
+            "tables": [
+                {
+                    "name": plan.table,
+                    **({"alias": plan.alias} if plan.alias and plan.alias != plan.table else {})
+                }
+            ]
+        }
     
-    # Parse the query
-    parsed_query = parser.parse(query, lexer=lexer)
-    
-    if not parsed_query:
-        print("Parsing failed.")
     else:
-        print("\nParsed query successfully!")
-        print(f"Parsed structure: {parsed_query}")
+        raise ValueError(f"Unknown node type for JSON conversion: {plan.node_type}")
+
+def parse_columns_to_json(columns_str):
+    """
+    Parse columns from string format back to JSON
+    """
+    result = []
+    for col_str in columns_str:
+        # Check if it's a table.column reference
+        if '.' in col_str:
+            table, attr = col_str.split('.')
+            column_obj = {"table": table, "attr": attr}
+        else:
+            column_obj = {"attr": col_str}
+            
+        result.append(column_obj)
+    
+    return result
+
+def parse_condition_to_json(condition_str):
+    """
+    Parse a condition from string format back to JSON
+    """
+    # Handle parentheses
+    condition_str = condition_str.strip()
+    if condition_str.startswith('(') and condition_str.endswith(')'):
+        # Remove outer parentheses
+        condition_str = condition_str[1:-1].strip()
+    
+    if ' AND ' in condition_str:
+        left_str, right_str = condition_str.split(' AND ', 1)
+        return {
+            "type": "AND",
+            "left": parse_condition_to_json(left_str),
+            "right": parse_condition_to_json(right_str)
+        }
+    elif ' OR ' in condition_str:
+        left_str, right_str = condition_str.split(' OR ', 1)
+        return {
+            "type": "OR",
+            "left": parse_condition_to_json(left_str),
+            "right": parse_condition_to_json(right_str)
+        }
+    elif condition_str.startswith('NOT '):
+        operand_str = condition_str[4:].strip()
+        if operand_str.startswith('(') and operand_str.endswith(')'):
+            operand_str = operand_str[1:-1].strip()
+        return {
+            "type": "NOT",
+            "cond": parse_condition_to_json(operand_str)
+        }
+    
+    # Handle basic comparisons
+    for op_str, op_type in [('=', 'EQ'), ('<', 'LT'), ('>', 'GT'), 
+                           ('<=', 'LE'), ('>=', 'GE'), ('<>', 'NE')]:
+        if op_str in condition_str:
+            left_str, right_str = condition_str.split(op_str, 1)
+            left = parse_operand_to_json(left_str.strip())
+            right = parse_operand_to_json(right_str.strip())
+            return {"type": op_type, "left": left, "right": right}
+    
+    # If none of the above, return the condition as is
+    return condition_str
+
+def parse_operand_to_json(operand_str):
+    """
+    Parse an operand from string format back to JSON
+    """
+    if '.' in operand_str:
+        # It's a table.column reference
+        table, attr = operand_str.split('.')
+        return {"table": table, "attr": attr}
+    elif operand_str.startswith("'") and operand_str.endswith("'"):
+        # It's a string literal
+        return {"type": "string", "value": operand_str[1:-1]}
+    elif operand_str.isdigit():
+        # It's an integer
+        return {"type": "int", "value": int(operand_str)}
+    elif operand_str.replace('.', '', 1).isdigit():
+        # It's a float
+        return {"type": "float", "value": float(operand_str)}
+    else:
+        # It's some other value
+        return operand_str
+
+# ------------------ Entry Point ------------------ #
+def optimize_query_plan(json_str):
+    """
+    Takes a JSON string representing a SQL query plan,
+    applies predicate pushdown optimization, and returns the optimized plan.
+    """
+    try:
+        # Parse JSON to dict
+        query_json = json.loads(json_str)
         
-        # Build logical plan
-        logical_plan = build_logical_plan(parsed_query)
+        # Build logical plan from JSON
+        logical_plan = build_logical_plan_from_json(query_json)
         
-        print("\nOriginal Logical Plan:")
+        print("Original Logical Plan:")
         print(logical_plan)
         
         # Apply predicate pushdown
@@ -537,30 +556,35 @@ if __name__ == "__main__":
         print("\nOptimized Logical Plan (with predicate pushdown):")
         print(optimized_plan)
         
-        # Test with a simpler query (single predicate)
-        simple_query = """
-        SELECT c.name
-        FROM customers c
-        JOIN ders o ON c.id = o.customer_id
-        WHERE c.country = 'USA'
-        """
+        # Convert optimized plan back to JSON
+        optimized_json = logical_plan_to_json(optimized_plan)
         
-        print(f"\n\nTesting simpler query: {simple_query}")
-        
-        # Parse the simpler query
-        parsed_simple = parser.parse(simple_query, lexer=lexer)
-        
-        if not parsed_simple:
-            print("Parsing failed for simple query.")
-        else:
-            # Build logical plan for simple query
-            simple_plan = build_logical_plan(parsed_simple)
-            
-            print("\nOriginal Logical Plan (simple query):")
-            print(simple_plan)
-            
-            # Apply predicate pushdown to simple query
-            optimized_simple = predicate_pushdown(simple_plan)
-            
-            print("\nOptimized Logical Plan (simple query):")
-            print(optimized_simple)
+        return json.dumps(optimized_json, indent=2)
+    
+    except Exception as e:
+        print(f"Error during optimization: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+# Test with an example
+if __name__ == "__main__":
+    # Example JSON with AND condition
+    example_and_filter = """
+    {"type": "select", "condition": {"type": "AND", "left": {"type": "GT", "left": {"table": "customers", "attr": "age"}, "right": {"type": "int", "value": 30}}, "right": {"type": "GT", "left": {"table": "orders", "attr": "amount"}, "right": {"type": "int", "value": 100}}}, "input": {"type": "project", "columns": [{"table": "customers", "attr": "id"}, {"table": "customers", "attr": "name"}, {"table": "orders", "attr": "order_id"}, {"table": "orders", "attr": "amount"}], "input": {"type": "join", "condition": {"type": "EQ", "left": {"table": "temp", "attr": "id"}, "right": {"type": "column", "table": "customers", "attr": "id"}}, "left": {"type": "join", "condition": {"type": "EQ", "left": {"table": "customers", "attr": "id"}, "right": {"type": "column", "table": "o", "attr": "customer_id"}}, "left": {"type": "base_relation", "tables": [{"name": "customers"}]}, "right": {"type": "base_relation", "tables": [{"name": "orders", "alias": "o"}]}}, "right": {"type": "base_relation", "tables": [{"name": "temp"}]}}}}
+    """
+    
+    # Example JSON with OR condition
+    example_or_filter = """
+    {"type": "select", "condition": {"type": "OR", "left": {"type": "GT", "left": {"table": "customers", "attr": "age"}, "right": {"type": "int", "value": 30}}, "right": {"type": "GT", "left": {"table": "orders", "attr": "amount"}, "right": {"type": "int", "value": 100}}}, "input": {"type": "project", "columns": [{"table": "customers", "attr": "id"}, {"table": "customers", "attr": "name"}, {"table": "orders", "attr": "order_id"}, {"table": "orders", "attr": "amount"}], "input": {"type": "join", "condition": {"type": "EQ", "left": {"table": "temp", "attr": "id"}, "right": {"type": "column", "table": "customers", "attr": "id"}}, "left": {"type": "join", "condition": {"type": "EQ", "left": {"table": "customers", "attr": "id"}, "right": {"type": "column", "table": "o", "attr": "customer_id"}}, "left": {"type": "base_relation", "tables": [{"name": "customers"}]}, "right": {"type": "base_relation", "tables": [{"name": "orders", "alias": "o"}]}}, "right": {"type": "base_relation", "tables": [{"name": "temp"}]}}}}
+    """
+    
+    print("\nOptimizing query with OR condition:")
+    optimized = optimize_query_plan(example_or_filter)
+    if optimized:
+        print("\nOptimized JSON:")
+        print(optimized)
+    
+    print("\nOptimizing query with AND condition:")
+    optimized = optimize_query_plan(example_and_filter)
+    
