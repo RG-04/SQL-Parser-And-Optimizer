@@ -1,0 +1,76 @@
+{
+    "type": "project",
+    "columns": [
+        {
+            "table": "customers",
+            "attr": "id"
+        },
+        {
+            "table": "customers",
+            "attr": "name"
+        },
+        {
+            "table": "orders",
+            "attr": "order_id"
+        },
+        {
+            "table": "orders",
+            "attr": "amount"
+        }
+    ],
+    "input": {
+        "type": "join",
+        "condition": {
+            "type": "EQ",
+            "left": {
+                "table": "temp",
+                "attr": "id"
+            },
+            "right": {
+                "type": "column",
+                "table": "customers",
+                "attr": "id"
+            }
+        },
+        "left": {
+            "type": "join",
+            "condition": {
+                "type": "EQ",
+                "left": {
+                    "table": "customers",
+                    "attr": "id"
+                },
+                "right": {
+                    "type": "column",
+                    "table": "o",
+                    "attr": "customer_id"
+                }
+            },
+            "left": {
+                "type": "base_relation",
+                "tables": [
+                    {
+                        "name": "customers"
+                    }
+                ]
+            },
+            "right": {
+                "type": "base_relation",
+                "tables": [
+                    {
+                        "name": "orders",
+                        "alias": "o"
+                    }
+                ]
+            }
+        },
+        "right": {
+            "type": "base_relation",
+            "tables": [
+                {
+                    "name": "temp"
+                }
+            ]
+        }
+    }
+}
