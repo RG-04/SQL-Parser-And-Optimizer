@@ -132,8 +132,6 @@ select_item_list:
         if ($2) {
             /* Column with alias */
             $$.attrs[0] = concat_strings3($1, " AS ", $2);
-            free($1);
-            free($2);
         } else {
             $$.attrs[0] = $1;
         }
@@ -145,8 +143,6 @@ select_item_list:
         if ($4) {
             /* Column with alias */
             $$.attrs[$$.count - 1] = concat_strings3($3, " AS ", $4);
-            free($3);
-            free($4);
         } else {
             $$.attrs[$$.count - 1] = $3;
         }
@@ -156,27 +152,21 @@ select_item_list:
 column_ref:
     IDENTIFIER {
         $$ = strdup($1);
-        free($1);
     }
     | IDENTIFIER DOT IDENTIFIER {
         $$ = concat_strings3($1, ".", $3);
-        free($1);
-        free($3);
     }
     | IDENTIFIER DOT ASTERISK {
         $$ = concat_strings($1, ".*");
-        free($1);
     }
     ;
 
 opt_alias:
     AS IDENTIFIER {
         $$ = strdup($2);
-        free($2);
     }
     | IDENTIFIER {
         $$ = strdup($1);
-        free($1);
     }
     | /* empty */ {
         $$ = NULL;
@@ -198,19 +188,15 @@ table_expr:
 simple_table:
     IDENTIFIER table_alias {
         $$ = create_relation($1, $2);
-        free($1);
-        if ($2) free($2);
     }
     ;
 
 table_alias:
     AS IDENTIFIER {
         $$ = strdup($2);
-        free($2);
     }
     | IDENTIFIER {
         $$ = strdup($1);
-        free($1);
     }
     | /* empty */ {
         $$ = NULL;
@@ -281,50 +267,34 @@ expr:
         $$.cond = concat_strings3("(", $1.cond, ") AND (");
         $$.cond = concat_strings($$.cond, $3.cond);
         $$.cond = concat_strings($$.cond, ")");
-        free($1.cond);
-        free($3.cond);
     }
     | expr OR expr {
         $$.cond = concat_strings3("(", $1.cond, ") OR (");
         $$.cond = concat_strings($$.cond, $3.cond);
         $$.cond = concat_strings($$.cond, ")");
-        free($1.cond);
-        free($3.cond);
     }
     | LPAREN expr RPAREN {
         $$.cond = concat_strings3("(", $2.cond, ")");
-        free($2.cond);
     }
     ;
 
 comparison_expr:
     column_ref comparison_op column_ref {
         $$.cond = concat_strings3($1, $2, $3);
-        free($1);
-        free($2);
-        free($3);
     }
     | column_ref comparison_op STRING_LITERAL {
         char *quoted_str = concat_strings3("'", $3, "'");
         $$.cond = concat_strings3($1, $2, quoted_str);
-        free($1);
-        free($2);
-        free($3);
-        free(quoted_str);
     }
     | column_ref comparison_op INTEGER_LITERAL {
         char int_str[32];
         sprintf(int_str, "%d", $3);
         $$.cond = concat_strings3($1, $2, int_str);
-        free($1);
-        free($2);
     }
     | column_ref comparison_op FLOAT_LITERAL {
         char float_str[32];
         sprintf(float_str, "%f", $3);
         $$.cond = concat_strings3($1, $2, float_str);
-        free($1);
-        free($2);
     }
     ;
 

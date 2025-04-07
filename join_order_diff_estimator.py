@@ -170,6 +170,13 @@ def build_logical_plan(parsed_query):
     where_clause = parsed_query.get('where')
     select_cols = parsed_query.get('select', [])
 
+    print("UNDERSTAND: ")
+    print(from_clause)
+    print("----")
+    print(where_clause)
+    print("----")
+    print(select_cols)
+
     # Handle simple table case
     if 'table' in from_clause:
         table_info = from_clause
@@ -259,9 +266,3 @@ if __name__ == "__main__":
             
     except Exception as e:
         print(f"Error: {e}")
-
-    # Examples of valid queries
-    print("\nExample valid queries for this parser:")
-    print("1. SELECT column1 FROM table1 WHERE column1 = \"value\"")
-    print("2. SELECT col1, col2 FROM table1 t1 JOIN table2 t2 ON t1.id = t2.id WHERE col1 = \"value\"")
-    print("3. SELECT t1.col1 FROM table1 t1 JOIN table2 AS t2 ON t1.id = t2.id")

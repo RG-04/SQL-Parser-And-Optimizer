@@ -29,8 +29,8 @@ YACC = bison
 TARGET = sqlparse
 
 # Source files
-LEXER_SRC = sql_lexer.l
-PARSER_SRC = sql_parser.y
+LEXER_SRC = sql_temp_lex.l
+PARSER_SRC = sql_temp_yacc.y
 MAIN_SRC = main.c
 
 # Generated files
@@ -51,5 +51,8 @@ $(TARGET): $(LEXER_C) $(PARSER_C) $(MAIN_SRC)
 
 clean:
 	rm -f $(TARGET) $(LEXER_C) $(PARSER_C) $(PARSER_H) *.o
+
+test: all
+	./$(TARGET) test.sql
 
 .PHONY: all clean

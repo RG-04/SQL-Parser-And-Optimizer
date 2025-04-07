@@ -1,1 +1,1 @@
-SELECT name, product FROM customers JOIN temp ON id = customer_id WHERE temp > abc AND temp2 < bcd
+SELECT c.name, c.product FROM customers AS c JOIN temp AS T ON c.id = t.customer_id WHERE t.val > 400 AND t.pal < bcd
