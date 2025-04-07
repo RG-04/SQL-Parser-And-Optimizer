@@ -571,7 +571,7 @@ def optimize_query_plan(json_str):
 if __name__ == "__main__":
     # Example JSON with AND condition
     example_and_filter = """
-    {"type": "select", "condition": {"type": "AND", "left": {"type": "GT", "left": {"table": "customers", "attr": "age"}, "right": {"type": "int", "value": 30}}, "right": {"type": "GT", "left": {"table": "orders", "attr": "amount"}, "right": {"type": "int", "value": 100}}}, "input": {"type": "project", "columns": [{"table": "customers", "attr": "id"}, {"table": "customers", "attr": "name"}, {"table": "orders", "attr": "order_id"}, {"table": "orders", "attr": "amount"}], "input": {"type": "join", "condition": {"type": "EQ", "left": {"table": "temp", "attr": "id"}, "right": {"type": "column", "table": "customers", "attr": "id"}}, "left": {"type": "join", "condition": {"type": "EQ", "left": {"table": "customers", "attr": "id"}, "right": {"type": "column", "table": "o", "attr": "customer_id"}}, "left": {"type": "base_relation", "tables": [{"name": "customers"}]}, "right": {"type": "base_relation", "tables": [{"name": "orders", "alias": "o"}]}}, "right": {"type": "base_relation", "tables": [{"name": "temp"}]}}}}
+    {"type": "select", "condition": {"type": "AND", "left": {"type": "AND", "left": {"type": "GT", "left": {"table": "customers", "attr": "age"}, "right": {"type": "int", "value": 30}}, "right": {"type": "GT", "left": {"table": "orders", "attr": "amount"}, "right": {"type": "int", "value": 100}}}, "right": {"type": "EQ", "left": {"table": "customers", "attr": "city"}, "right": {"type": "string", "value": "New York"}}}, "input": {"type": "project", "columns": [{"table": "customers", "attr": "id"}, {"table": "customers", "attr": "name"}, {"table": "orders", "attr": "order_id"}, {"table": "orders", "attr": "amount"}], "input": {"type": "join", "condition": {"type": "EQ", "left": {"table": "temp", "attr": "id"}, "right": {"type": "column", "table": "customers", "attr": "id"}}, "left": {"type": "join", "condition": {"type": "EQ", "left": {"table": "customers", "attr": "id"}, "right": {"type": "column", "table": "o", "attr": "customer_id"}}, "left": {"type": "base_relation", "tables": [{"name": "customers"}]}, "right": {"type": "base_relation", "tables": [{"name": "orders", "alias": "o"}]}}, "right": {"type": "base_relation", "tables": [{"name": "temp"}]}}}}
     """
     
     # Example JSON with OR condition
@@ -581,10 +581,15 @@ if __name__ == "__main__":
     
     print("\nOptimizing query with OR condition:")
     optimized = optimize_query_plan(example_or_filter)
+
     if optimized:
-        print("\nOptimized JSON:")
-        print(optimized)
-    
+        with open ('optimized_query_OR.json', 'w') as f:
+            f.write(optimized)
+
     print("\nOptimizing query with AND condition:")
     optimized = optimize_query_plan(example_and_filter)
+
+    if optimized:
+        with open ('optimized_query_AND.json', 'w') as f:
+            f.write(optimized)
     
