@@ -7,7 +7,7 @@ import math
 DB_CONFIG = {
     'dbname': 'my_db',
     'user': 'postgres',
-    'password': 'password',
+    'password': 'postgres',
     'host': 'localhost',
     'port': 5432
 }
@@ -225,6 +225,6 @@ if __name__ == "__main__":
     print_execution_plan(plan)
     assign_join_strategies(plan, table_stats)
 
-    print("\n✅ Final Execution Plan:")
+    print("\nFinal Execution Plan:")
     print_execution_plan(plan)
     print(f"\nTotal Cost: {plan.cost:.2f}, Cardinality: {plan.cardinality:.2f}")
