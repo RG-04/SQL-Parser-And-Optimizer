@@ -4,8 +4,14 @@ LDFLAGS =
 
 PROG = sql_to_ra
 OBJECTS = lex.yy.o y.tab.o main.o
+TEST_FILE = test.sql
+OUT_FILE = out.json
 
 all: $(PROG)
+
+test: $(PROG)
+	@echo "Running test with input file: $(TEST_FILE)"
+	@./$(PROG) $(TEST_FILE) > $(OUT_FILE)
 
 $(PROG): $(OBJECTS)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJECTS)

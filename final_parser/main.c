@@ -35,7 +35,6 @@ int main(int argc, char *argv[]) {
     
     // Parse the input
     if (yyparse() == 0) {
-        printf("Parsing successful. Relational Algebra Tree (JSON format):\n");
         if (result != NULL) {
             print_ra_tree_json(result);
             free_relnode(result);  // Clean up memory

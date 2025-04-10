@@ -12,7 +12,8 @@ typedef enum {
     OP_PROJECT,
     OP_SELECT,
     OP_JOIN,
-    OP_RENAME
+    OP_RENAME,
+    OP_SUBQUERY  // New operation type for nested queries
 } RelOpType;
 
 typedef enum {
@@ -83,6 +84,10 @@ typedef struct RelNode {
             char *old_name;
             char *new_name;
         } rename;
+        struct {
+            struct RelNode *subquery;
+            char *alias;  // Required alias for the subquery
+        } subquery;
     } op;
     Table *tables; /* For base relations only */
 } RelNode;
@@ -102,6 +107,7 @@ RelNode *create_select_node(RelNode *input, Condition *condition);
 RelNode *create_join_node(RelNode *left, RelNode *right, Condition *condition);
 RelNode *create_rename_node(RelNode *input, char *old_name, char *new_name);
 RelNode *create_base_relation(Table *tables);
+RelNode *create_subquery_node(RelNode *subquery, char *alias);
 void print_ra_tree_json(RelNode *root);
 void free_columns(Column *cols);
 void free_tables(Table *tables);
@@ -133,7 +139,8 @@ RelNode *result = NULL;
 %type <tbl> table_list table_ref
 %type <cond> where_clause opt_where_clause condition comparison_expr
 %type <cond> join_condition
-%type <node> query_stmt join_list join_table
+%type <node> query_stmt join_list join_table table_item subquery
+%type <strval> dotted_identifier
 
 %left OR
 %left AND
@@ -165,7 +172,7 @@ column_list:
 ;
 
 column:
-    IDENTIFIER '.' IDENTIFIER {
+    IDENTIFIER '.' dotted_identifier {
         $$ = create_column($1, $3);
         free($1);
         free($3);
@@ -176,9 +183,23 @@ column:
     }
 ;
 
+dotted_identifier:
+    IDENTIFIER {
+        $$ = strdup($1);
+        free($1);
+    }
+    | dotted_identifier '.' IDENTIFIER {
+        char* temp = (char*)malloc(strlen($1) + strlen($3) + 2); // +2 for the dot and null terminator
+        sprintf(temp, "%s.%s", $1, $3);
+        $$ = temp;
+        free($1);
+        free($3);
+    }
+;
+
 join_list:
-    table_ref {
-        $$ = create_base_relation($1);
+    table_item {
+        $$ = $1;
     }
     | join_list JOIN join_table ON join_condition {
         $$ = create_join_node($1, $3, $5);
@@ -186,8 +207,28 @@ join_list:
 ;
 
 join_table:
+    table_item {
+        $$ = $1;
+    }
+;
+
+table_item:
     table_ref {
         $$ = create_base_relation($1);
+    }
+    | subquery {
+        $$ = $1;
+    }
+;
+
+subquery:
+    '(' query_stmt ')' AS IDENTIFIER {
+        $$ = create_subquery_node($2, $5);
+        free($5);
+    }
+    | '(' query_stmt ')' IDENTIFIER {  /* Implicit AS for subquery */
+        $$ = create_subquery_node($2, $4);
+        free($4);
     }
 ;
 
@@ -257,139 +298,139 @@ condition:
 ;
 
 comparison_expr:
-    IDENTIFIER '.' IDENTIFIER EQ IDENTIFIER '.' IDENTIFIER {
+    IDENTIFIER '.' dotted_identifier EQ IDENTIFIER '.' dotted_identifier {
         $$ = create_comparison(COND_EQ, $1, $3, 3, 0, 0.0, NULL, $5, $7);
         free($1);
         free($3);
         free($5);
         free($7);
     }
-    | IDENTIFIER '.' IDENTIFIER EQ INT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier EQ INT_LITERAL {
         $$ = create_comparison(COND_EQ, $1, $3, 0, $5, 0.0, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER EQ FLOAT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier EQ FLOAT_LITERAL {
         $$ = create_comparison(COND_EQ, $1, $3, 1, 0, $5, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER EQ STRING_LITERAL {
+    | IDENTIFIER '.' dotted_identifier EQ STRING_LITERAL {
         $$ = create_comparison(COND_EQ, $1, $3, 2, 0, 0.0, $5, NULL, NULL);
         free($1);
         free($3);
         free($5);
     }
-    | IDENTIFIER '.' IDENTIFIER LT IDENTIFIER '.' IDENTIFIER {
+    | IDENTIFIER '.' dotted_identifier LT IDENTIFIER '.' dotted_identifier {
         $$ = create_comparison(COND_LT, $1, $3, 3, 0, 0.0, NULL, $5, $7);
         free($1);
         free($3);
         free($5);
         free($7);
     }
-    | IDENTIFIER '.' IDENTIFIER GT IDENTIFIER '.' IDENTIFIER {
+    | IDENTIFIER '.' dotted_identifier GT IDENTIFIER '.' dotted_identifier {
         $$ = create_comparison(COND_GT, $1, $3, 3, 0, 0.0, NULL, $5, $7);
         free($1);
         free($3);
         free($5);
         free($7);
     }
-    | IDENTIFIER '.' IDENTIFIER LE IDENTIFIER '.' IDENTIFIER {
+    | IDENTIFIER '.' dotted_identifier LE IDENTIFIER '.' dotted_identifier {
         $$ = create_comparison(COND_LE, $1, $3, 3, 0, 0.0, NULL, $5, $7);
         free($1);
         free($3);
         free($5);
         free($7);
     }
-    | IDENTIFIER '.' IDENTIFIER GE IDENTIFIER '.' IDENTIFIER {
+    | IDENTIFIER '.' dotted_identifier GE IDENTIFIER '.' dotted_identifier {
         $$ = create_comparison(COND_GE, $1, $3, 3, 0, 0.0, NULL, $5, $7);
         free($1);
         free($3);
         free($5);
         free($7);
     }
-    | IDENTIFIER '.' IDENTIFIER NE IDENTIFIER '.' IDENTIFIER {
+    | IDENTIFIER '.' dotted_identifier NE IDENTIFIER '.' dotted_identifier {
         $$ = create_comparison(COND_NE, $1, $3, 3, 0, 0.0, NULL, $5, $7);
         free($1);
         free($3);
         free($5);
         free($7);
     }
-    | IDENTIFIER '.' IDENTIFIER LT INT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier LT INT_LITERAL {
         $$ = create_comparison(COND_LT, $1, $3, 0, $5, 0.0, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER GT INT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier GT INT_LITERAL {
         $$ = create_comparison(COND_GT, $1, $3, 0, $5, 0.0, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER LE INT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier LE INT_LITERAL {
         $$ = create_comparison(COND_LE, $1, $3, 0, $5, 0.0, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER GE INT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier GE INT_LITERAL {
         $$ = create_comparison(COND_GE, $1, $3, 0, $5, 0.0, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER NE INT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier NE INT_LITERAL {
         $$ = create_comparison(COND_NE, $1, $3, 0, $5, 0.0, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER LT FLOAT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier LT FLOAT_LITERAL {
         $$ = create_comparison(COND_LT, $1, $3, 1, 0, $5, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER GT FLOAT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier GT FLOAT_LITERAL {
         $$ = create_comparison(COND_GT, $1, $3, 1, 0, $5, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER LE FLOAT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier LE FLOAT_LITERAL {
         $$ = create_comparison(COND_LE, $1, $3, 1, 0, $5, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER GE FLOAT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier GE FLOAT_LITERAL {
         $$ = create_comparison(COND_GE, $1, $3, 1, 0, $5, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER NE FLOAT_LITERAL {
+    | IDENTIFIER '.' dotted_identifier NE FLOAT_LITERAL {
         $$ = create_comparison(COND_NE, $1, $3, 1, 0, $5, NULL, NULL, NULL);
         free($1);
         free($3);
     }
-    | IDENTIFIER '.' IDENTIFIER LT STRING_LITERAL {
+    | IDENTIFIER '.' dotted_identifier LT STRING_LITERAL {
         $$ = create_comparison(COND_LT, $1, $3, 2, 0, 0.0, $5, NULL, NULL);
         free($1);
         free($3);
         free($5);
     }
-    | IDENTIFIER '.' IDENTIFIER GT STRING_LITERAL {
+    | IDENTIFIER '.' dotted_identifier GT STRING_LITERAL {
         $$ = create_comparison(COND_GT, $1, $3, 2, 0, 0.0, $5, NULL, NULL);
         free($1);
         free($3);
         free($5);
     }
-    | IDENTIFIER '.' IDENTIFIER LE STRING_LITERAL {
+    | IDENTIFIER '.' dotted_identifier LE STRING_LITERAL {
         $$ = create_comparison(COND_LE, $1, $3, 2, 0, 0.0, $5, NULL, NULL);
         free($1);
         free($3);
         free($5);
     }
-    | IDENTIFIER '.' IDENTIFIER GE STRING_LITERAL {
+    | IDENTIFIER '.' dotted_identifier GE STRING_LITERAL {
         $$ = create_comparison(COND_GE, $1, $3, 2, 0, 0.0, $5, NULL, NULL);
         free($1);
         free($3);
         free($5);
     }
-    | IDENTIFIER '.' IDENTIFIER NE STRING_LITERAL {
+    | IDENTIFIER '.' dotted_identifier NE STRING_LITERAL {
         $$ = create_comparison(COND_NE, $1, $3, 2, 0, 0.0, $5, NULL, NULL);
         free($1);
         free($3);
@@ -401,6 +442,31 @@ comparison_expr:
 
 void yyerror(const char *s) {
     fprintf(stderr, "Error: %s\n", s);
+}
+
+/* Helper functions for handling dotted attribute names */
+char* get_first_part(const char* dotted_str) {
+    // Returns the part before the first dot
+    char* dot_pos = strchr(dotted_str, '.');
+    if (dot_pos == NULL) {
+        return strdup(dotted_str); // No dot found, return the whole string
+    }
+    
+    int length = dot_pos - dotted_str;
+    char* result = (char*)malloc(length + 1);
+    strncpy(result, dotted_str, length);
+    result[length] = '\0';
+    return result;
+}
+
+char* get_remaining_part(const char* dotted_str) {
+    // Returns everything after the first dot
+    char* dot_pos = strchr(dotted_str, '.');
+    if (dot_pos == NULL) {
+        return NULL; // No dot found
+    }
+    
+    return strdup(dot_pos + 1); // +1 to skip the dot itself
 }
 
 Column *create_column(char *table, char *attr) {
@@ -525,6 +591,16 @@ RelNode *create_base_relation(Table *tables) {
     RelNode *node = (RelNode *)malloc(sizeof(RelNode));
     node->op_type = (RelOpType)-1; /* Mark as base relation */
     node->tables = tables;
+    return node;
+}
+
+/* New function to create a subquery node */
+RelNode *create_subquery_node(RelNode *subquery, char *alias) {
+    RelNode *node = (RelNode *)malloc(sizeof(RelNode));
+    node->op_type = OP_SUBQUERY;
+    node->op.subquery.subquery = subquery;
+    node->op.subquery.alias = strdup(alias);
+    node->tables = NULL;
     return node;
 }
 
@@ -667,6 +743,12 @@ void print_ra_tree_json_rec(RelNode *node) {
                        node->op.rename.old_name, node->op.rename.new_name);
                 print_ra_tree_json_rec(node->op.rename.input);
                 break;
+                
+            case OP_SUBQUERY:
+                printf("\"type\": \"subquery\", \"alias\": \"%s\", \"query\": ", 
+                       node->op.subquery.alias);
+                print_ra_tree_json_rec(node->op.subquery.subquery);
+                break;
         }
     }
     
@@ -759,6 +841,11 @@ void free_relnode(RelNode *node) {
                 free(node->op.rename.old_name);
                 free(node->op.rename.new_name);
                 free_relnode(node->op.rename.input);
+                break;
+                
+            case OP_SUBQUERY:
+                free(node->op.subquery.alias);
+                free_relnode(node->op.subquery.subquery);
                 break;
         }
     }
