@@ -557,9 +557,15 @@ def optimize_query_plan(json_str):
         print(optimized_plan)
         
         # Convert optimized plan back to JSON
+        logical_json = logical_plan_to_json(logical_plan)
         optimized_json = logical_plan_to_json(optimized_plan)
         
-        return json.dumps(optimized_json, indent=2)
+        return {
+            "original_plan_str": logical_plan.__str__(),
+            "optimized_plan_str": optimized_plan.__str__(),
+            "optimized_plan_json": optimized_json,
+            "original_plan_json": logical_json
+        }
     
     except Exception as e:
         print(f"Error during optimization: {e}")
@@ -567,29 +573,23 @@ def optimize_query_plan(json_str):
         traceback.print_exc()
         return None
 
-# Test with an example
 if __name__ == "__main__":
-    # Example JSON with AND condition
-    example_and_filter = """
-    {"type": "select", "condition": {"type": "AND", "left": {"type": "AND", "left": {"type": "GT", "left": {"table": "customers", "attr": "age"}, "right": {"type": "int", "value": 30}}, "right": {"type": "GT", "left": {"table": "orders", "attr": "amount"}, "right": {"type": "int", "value": 100}}}, "right": {"type": "EQ", "left": {"table": "customers", "attr": "city"}, "right": {"type": "string", "value": "New York"}}}, "input": {"type": "project", "columns": [{"table": "customers", "attr": "id"}, {"table": "customers", "attr": "name"}, {"table": "orders", "attr": "order_id"}, {"table": "orders", "attr": "amount"}], "input": {"type": "join", "condition": {"type": "EQ", "left": {"table": "temp", "attr": "id"}, "right": {"type": "column", "table": "customers", "attr": "id"}}, "left": {"type": "join", "condition": {"type": "EQ", "left": {"table": "customers", "attr": "id"}, "right": {"type": "column", "table": "o", "attr": "customer_id"}}, "left": {"type": "base_relation", "tables": [{"name": "customers"}]}, "right": {"type": "base_relation", "tables": [{"name": "orders", "alias": "o"}]}}, "right": {"type": "base_relation", "tables": [{"name": "temp"}]}}}}
-    """
-    
-    # Example JSON with OR condition
-    example_or_filter = """
-    {"type": "select", "condition": {"type": "OR", "left": {"type": "GT", "left": {"table": "customers", "attr": "age"}, "right": {"type": "int", "value": 30}}, "right": {"type": "GT", "left": {"table": "orders", "attr": "amount"}, "right": {"type": "int", "value": 100}}}, "input": {"type": "project", "columns": [{"table": "customers", "attr": "id"}, {"table": "customers", "attr": "name"}, {"table": "orders", "attr": "order_id"}, {"table": "orders", "attr": "amount"}], "input": {"type": "join", "condition": {"type": "EQ", "left": {"table": "temp", "attr": "id"}, "right": {"type": "column", "table": "customers", "attr": "id"}}, "left": {"type": "join", "condition": {"type": "EQ", "left": {"table": "customers", "attr": "id"}, "right": {"type": "column", "table": "o", "attr": "customer_id"}}, "left": {"type": "base_relation", "tables": [{"name": "customers"}]}, "right": {"type": "base_relation", "tables": [{"name": "orders", "alias": "o"}]}}, "right": {"type": "base_relation", "tables": [{"name": "temp"}]}}}}
-    """
-    
-    print("\nOptimizing query with OR condition:")
-    optimized = optimize_query_plan(example_or_filter)
+    INPUT_FILE = "relational_algebra.json"
+    ORIGINAL_OUT_FILE = "original_out.json"
+    OPTIMIZED_OUT_FILE = "optimized_out.json"
 
-    if optimized:
-        with open ('optimized_query_OR.json', 'w') as f:
-            f.write(optimized)
+    # Read JSON input from file
+    with open(INPUT_FILE, 'r') as f:
+        json_str = f.read()
 
-    print("\nOptimizing query with AND condition:")
-    optimized = optimize_query_plan(example_and_filter)
+    # Optimize the query plan
+    result = optimize_query_plan(json_str)
 
-    if optimized:
-        with open ('optimized_query_AND.json', 'w') as f:
-            f.write(optimized)
+    if result:
+        with open(ORIGINAL_OUT_FILE, 'w') as f:
+            json.dump(result["original_plan_json"], f, indent=2)
+        with open(OPTIMIZED_OUT_FILE, 'w') as f:
+            json.dump(result["optimized_plan_json"], f, indent=2)
+
+
     
