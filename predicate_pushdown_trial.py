@@ -3,19 +3,22 @@ import sys
 
 # ------------------ Logical Plan Nodes ------------------ #
 class LogicalPlanNode:
-    def __init__(self, node_type, children=None, predicate=None, table=None, alias=None, columns=None):
+    def __init__(self, node_type, children=None, predicate=None, table=None, alias=None, columns=None, subquery=None):
         self.node_type = node_type
         self.children = children or []
         self.predicate = predicate
         self.table = table
         self.alias = alias
         self.columns = columns
+        self.subquery = subquery  # Added for subquery nodes
 
     def __str__(self, level=0):
         indent = "  " * level
         s = f"{indent}{self.node_type}"
         if self.table:
             s += f"({self.table}" + (f" AS {self.alias}" if self.alias and self.alias != self.table else "") + ")"
+        elif self.node_type == 'SUBQUERY' and self.alias:
+            s += f"(AS {self.alias})"
         if self.predicate:
             s += f" [{self.predicate}]"
         if self.columns:
@@ -67,6 +70,13 @@ def build_logical_plan_from_json(json_obj):
         # In our simplified model, we can treat it as adding an alias to a scan or join
         input_plan.alias = json_obj['new_name']
         return input_plan
+    
+    elif json_obj['type'] == 'subquery':
+        # Handle subquery operation
+        query_plan = build_logical_plan_from_json(json_obj['query'])
+        alias = json_obj.get('alias')
+        # Create a subquery node that contains the query plan as its child
+        return LogicalPlanNode('SUBQUERY', children=[query_plan], alias=alias, subquery=True)
     
     else:
         raise ValueError(f"Unknown node type: {json_obj['type']}")
@@ -154,7 +164,9 @@ def format_operand(operand):
             return f"'{operand.get('value', '')}'"
         elif 'table' in operand and 'attr' in operand:
             # It's a column reference without explicit type
-            return f"{operand['table']}.{operand['attr']}"
+            table = operand['table']
+            attr = operand['attr']
+            return f"{table}.{attr}"
         else:
             # Some other structure
             return str(operand)
@@ -210,6 +222,11 @@ def predicate_pushdown(plan):
                 print(f"Found SCAN for {table_name}, applying filter directly")
                 return LogicalPlanNode('FILTER', children=[node], predicate=predicate)
             
+            # For SUBQUERY nodes, check if the alias matches and consider pushing down
+            if node.node_type == 'SUBQUERY' and node.alias == table_name:
+                print(f"Found SUBQUERY for {table_name}, applying filter at subquery level")
+                return LogicalPlanNode('FILTER', children=[node], predicate=predicate)
+            
             if not hasattr(node, 'children') or not node.children:
                 return node
             
@@ -227,6 +244,9 @@ def predicate_pushdown(plan):
             if node.node_type == 'SCAN':
                 return node.table == table_name or node.alias == table_name
             
+            if node.node_type == 'SUBQUERY' and node.alias == table_name:
+                return True
+            
             if not hasattr(node, 'children') or not node.children:
                 return False
                 
@@ -240,6 +260,10 @@ def predicate_pushdown(plan):
             if node.node_type == 'SCAN' and node.alias and node.alias != node.table:
                 aliases[node.alias] = node.table
                 aliases[node.table] = node.table  # Also map table to itself
+            
+            # Include subquery aliases
+            if node.node_type == 'SUBQUERY' and node.alias:
+                aliases[node.alias] = node.alias  # Subqueries are treated as their own namespace
             
             if hasattr(node, 'children') and node.children:
                 for child in node.children:
@@ -384,6 +408,9 @@ def predicate_pushdown(plan):
             elif child.node_type == 'SCAN' and (child.table == table_name or child.alias == table_name):
                 # Direct filter on scan
                 return LogicalPlanNode('FILTER', children=[child], predicate=predicate)
+            elif child.node_type == 'SUBQUERY' and child.alias == table_name:
+                # Direct filter on subquery
+                return LogicalPlanNode('FILTER', children=[child], predicate=predicate)
         
         # If we can't determine which table the predicate belongs to, or it spans
         # multiple tables, keep the filter where it is
@@ -446,6 +473,16 @@ def logical_plan_to_json(plan):
                     **({"alias": plan.alias} if plan.alias and plan.alias != plan.table else {})
                 }
             ]
+        }
+    
+    elif plan.node_type == 'SUBQUERY':
+        # Convert the subquery's internal plan to JSON
+        query_json = logical_plan_to_json(plan.children[0])
+        
+        return {
+            "type": "subquery",
+            "alias": plan.alias,
+            "query": query_json
         }
     
     else:
@@ -519,9 +556,18 @@ def parse_operand_to_json(operand_str):
     """
     if '.' in operand_str:
         # It's a table.column reference
-        table, attr = operand_str.split('.')
-        return {"table": table, "attr": attr}
-    elif operand_str.startswith("'") and operand_str.endswith("'"):
+        # Handle cases where we might have multiple dots (like tmp.a.id)
+        parts = operand_str.split('.')
+        if len(parts) == 2:
+            table, attr = parts
+            return {"table": table, "attr": attr}
+        elif len(parts) > 2:
+            # For cases like 'tmp.a.id' where 'tmp' is the table and 'a.id' is the attribute
+            table = parts[0]
+            attr = '.'.join(parts[1:])
+            return {"table": table, "attr": attr}
+    
+    if operand_str.startswith("'") and operand_str.endswith("'"):
         # It's a string literal
         return {"type": "string", "value": operand_str[1:-1]}
     elif operand_str.isdigit():
@@ -590,6 +636,3 @@ if __name__ == "__main__":
             json.dump(result["original_plan_json"], f, indent=2)
         with open(OPTIMIZED_OUT_FILE, 'w') as f:
             json.dump(result["optimized_plan_json"], f, indent=2)
-
-
-    
