@@ -1,0 +1,69 @@
+.optimization-explanation {
+    background-color: white;
+    padding: 15px;
+    border-radius: 5px;
+    border: 1px solid #dee2e6;
+}
+
+.optimization-explanation h5 {
+    color: #343a40;
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+}
+
+.optimization-comparison {
+    display: flex;
+    margin: 15px 0;
+}
+
+.original-explanation, .optimized-explanation {
+    flex: 1;
+    padding: 10px;
+}
+
+.original-explanation {
+    background-color: #fff3cd;
+    border-radius: 5px 0 0 5px;
+    border: 1px solid #ffeeba;
+    border-right: none;
+}
+
+.optimized-explanation {
+    background-color: #d1e7dd;
+    border-radius: 0 5px 5px 0;
+    border: 1px solid #badbcc;
+}
+
+.optimization-comparison h6 {
+    margin-top: 0;
+    font-size: 1rem;
+}
+
+.optimization-benefits {
+    background-color: #e2e3fe;
+    padding: 10px 15px;
+    border-radius: 5px;
+    border: 1px solid #d6d8fb;
+    margin-top: 15px;
+}
+
+.optimization-benefits h6 {
+    margin-top: 0;
+    color: #6f42c1;
+    font-size: 1rem;
+}
+
+.optimization-benefits ul {
+    margin-bottom: 0;
+    padding-left: 20px;
+}
+
+/* Special styling for more visibility on optimization */
+#original-graph .graph-node-select {
+    box-shadow: 0 0 10px rgba(220, 53, 69, 0.5);
+}
+
+#optimized-graph .graph-node-select {
+    box-shadow: 0 0 10px rgba(25, 135, 84, 0.5);
+}

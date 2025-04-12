@@ -3,7 +3,7 @@ import subprocess
 import json
 import os
 import tempfile
-
+from predicate_pushdown import optimize_query_plan
 app = Flask(__name__, static_folder='static')
 
 @app.route('/')
@@ -57,15 +57,31 @@ def parse_sql():
 
 @app.route('/optimize', methods=['POST'])
 def optimize_query():
-    # Placeholder for future optimization steps
-    relational_algebra = request.json.get('relational_algebra', {})
+    print("Optimize endpoint called: ", request.json)  # Debug output
     
-    # For now, just return the same RA without modifications
-    # This will be replaced with actual optimization logic later
-    return jsonify({
-        'success': True,
-        'optimized': relational_algebra
-    })
+    try:
+        # Get the relational algebra JSON from the request
+        relational_algebra = request.json.get('relational_algebra', {})
+        result = optimize_query_plan(json.dumps(relational_algebra))
+        
+        optimized_plan = result["optimized_plan_json"]
+        
+        print("Successfully read example files")  # Debug output
+        
+        return jsonify({
+            'success': True,
+            'original_plan_json': relational_algebra,
+            'optimized_plan_json': optimized_plan,
+            'explanation': 'Predicate pushdown moved the filter condition (b.id > 1) down to be applied directly to the base table.'
+        })
+        
+            
+    except Exception as e:
+        print(f"Exception in optimize endpoint: {e}")  # Debug output
+        return jsonify({
+            'success': False,
+            'error': f'Optimization failed: {str(e)}'
+        })
 
 if __name__ == '__main__':
     app.run(debug=True)

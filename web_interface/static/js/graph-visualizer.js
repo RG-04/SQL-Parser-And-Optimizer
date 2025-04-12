@@ -201,9 +201,8 @@ class RelationalAlgebraGraph {
         // Find the max depth
         const maxDepth = Math.max(...Object.keys(depthToNodes).map(Number), 0);
         
-        // Calculate vertical spacing based on depth, with more space for larger trees
-        const minVerticalSpacing = 120; // Minimum space between levels
-        let verticalSpacing = Math.max(minVerticalSpacing, (containerHeight - 2 * padding) / (maxDepth + 1));
+        // Calculate vertical spacing based on depth - adjust based on depth
+        const verticalSpacing = (containerHeight - 2 * padding) / (maxDepth + 1);
         
         // First, position the root node (depth 0) at the center top
         if (depthToNodes[0] && depthToNodes[0].length > 0) {
@@ -237,35 +236,40 @@ class RelationalAlgebraGraph {
             });
             
             // Position all nodes at this level
-            const horizontalSpacing = Math.max(100, containerWidth / (nodeCount + 1)); // Minimum horizontal spacing
+            let totalSegments = 0;
+            // Count total segments needed (each parent gets one segment for its children)
+            Object.keys(nodesByParent).forEach(parentId => {
+                totalSegments += nodesByParent[parentId].length;
+            });
             
-            // Calculate how to distribute parent segments
-            const parents = Object.keys(nodesByParent);
-            const parentSpacing = containerWidth / (parents.length + 1);
+            const segmentWidth = (containerWidth - 2 * padding) / totalSegments;
+            let currentX = padding + segmentWidth / 2;
             
-            parents.forEach((parentId, parentIndex) => {
+            // For each parent, position its children in consecutive segments
+            Object.keys(nodesByParent).forEach(parentId => {
                 const children = nodesByParent[parentId];
-                const parentX = (parentIndex + 1) * parentSpacing;
                 
                 // Find parent node to center children below it
                 const parentNode = this.nodes.find(n => n.id === parentId);
-                let parentCenterX = parentX; // Default if parent not found
+                let parentCenterX = containerWidth / 2; // Default if parent not found
                 
                 if (parentNode) {
                     parentCenterX = parentNode.x;
                 }
                 
-                // Position children centered under parent with adequate spacing
-                const childrenCount = children.length;
-                const childGroupWidth = childrenCount * horizontalSpacing;
-                const startX = parentCenterX - childGroupWidth / 2 + horizontalSpacing / 2;
+                // Position children at appropriate segmentation and centered under parent
+                const childrenWidth = children.length * segmentWidth;
+                const startX = parentCenterX - childrenWidth / 2 + segmentWidth / 2;
                 
                 children.forEach((node, index) => {
-                    node.x = Math.max(padding, Math.min(containerWidth - padding, startX + index * horizontalSpacing));
+                    node.x = Math.max(padding, Math.min(containerWidth - padding, startX + index * segmentWidth));
                     node.y = padding + depth * verticalSpacing;
                 });
             });
         }
+        
+        // Final adjustment to make the graph more compact and centered
+        this.centerAndScaleGraph();
     }
     
     /**
