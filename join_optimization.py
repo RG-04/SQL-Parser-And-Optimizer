@@ -490,6 +490,13 @@ class QueryOptimizer:
         
         # For debugging
         print(f"Generated {len(valid_orders)} valid join orders")
+
+        # print("[DEBUG] Valid join orders ----------------- :")
+        # for order in valid_orders:
+        #     print(order)
+
+        # print("---------------------------------------------")
+
         if valid_orders:
             print(f"First join order: {valid_orders[0]}, type: {type(valid_orders[0])}")
         
