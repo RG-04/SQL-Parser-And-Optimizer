@@ -1,0 +1,117 @@
+/* Tree Visualization Styles */
+.tree-container {
+    margin: 20px 0;
+    padding: 20px;
+    overflow: auto;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border: 1px solid #e0e0e0;
+}
+
+.tree {
+    font-family: 'Courier New', monospace;
+    margin: 0;
+    padding: 0;
+}
+
+.tree li {
+    list-style-type: none;
+    margin: 10px 0;
+    position: relative;
+}
+
+.tree li::before {
+    content: "";
+    position: absolute;
+    top: -10px;
+    left: -20px;
+    border-left: 1px solid #ccc;
+    height: 100%;
+    width: 1px;
+}
+
+.tree li::after {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: -20px;
+    border-top: 1px solid #ccc;
+    width: 20px;
+}
+
+.tree > li::before,
+.tree > li::after {
+    border: none;
+}
+
+.tree li:last-child::before {
+    height: 20px;
+}
+
+.tree ul {
+    padding-left: 30px;
+    margin-top: 5px;
+}
+
+.tree-node {
+    border: 1px solid #ddd;
+    background-color: white;
+    padding: 6px 12px;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+.tree-node-type {
+    font-weight: bold;
+    color: #0d6efd;
+}
+
+.tree-node-detail {
+    margin-left: 5px;
+    color: #333;
+}
+
+.tree-node-condition {
+    font-style: italic;
+    color: #198754;
+}
+
+.tree-column {
+    color: #dc3545;
+}
+
+.tree-literal {
+    color: #6f42c1;
+}
+
+.tree-operator {
+    font-weight: bold;
+    color: #fd7e14;
+}
+
+.tree-table {
+    font-style: italic;
+    color: #20c997;
+}
+
+/* Toggle functionality */
+.toggle-btn {
+    cursor: pointer;
+    margin-right: 5px;
+    color: #6c757d;
+    display: inline-block;
+    width: 15px;
+    text-align: center;
+}
+
+.collapsed > ul {
+    display: none;
+}
+
+.expanded > .toggle-btn:before {
+    content: "−";
+}
+
+.collapsed > .toggle-btn:before {
+    content: "+";
+}

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL Query Parser & Optimizer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/styles.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/tree-styles.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/graph-styles.css') }}" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1 class="mb-4">SQL Query Parser & Optimizer</h1>
+        
+        <div class="step-nav">
+            <button class="btn btn-outline-primary step-btn active" id="parsing-btn">1. Parsing</button>
+            <button class="btn btn-outline-primary step-btn" id="optimization-btn" disabled>2. Optimization</button>
+            <!-- Additional steps can be added here -->
+        </div>
+        
+        <div class="tab-content">
+            <div class="tab-pane active" id="parsing-tab">
+                <h3>SQL Query Input</h3>
+                <textarea id="sql-editor" class="form-control" placeholder="Enter your SQL query here..."></textarea>
+                <button id="parse-btn" class="btn btn-primary">Parse SQL</button>
+                
+                <div id="loading-indicator" class="mt-3 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span class="ms-2">Processing query...</span>
+                </div>
+                
+                <div id="parse-error" class="alert alert-danger mt-3 d-none"></div>
+                
+                <div id="parse-result-container" class="mt-4 d-none">
+                    <h3>Relational Algebra (JSON)</h3>
+                    <div class="btn-group mb-2">
+                        <button id="view-raw-btn" class="btn btn-sm btn-outline-secondary">Raw JSON</button>
+                        <button id="view-json-btn" class="btn btn-sm btn-outline-secondary">JSON Tree</button>
+                        <button id="view-tree-btn" class="btn btn-sm btn-outline-secondary">Visual Tree</button>
+                        <button id="view-graph-btn" class="btn btn-sm btn-outline-secondary active">Graph View</button>
+                    </div>
+                    <div id="json-raw" class="json-tree d-none">
+                        <pre id="json-raw-content"></pre>
+                    </div>
+                    <div id="json-tree" class="json-tree d-none"></div>
+                    <div id="visual-tree" class="tree-container d-none"></div>
+                    <div id="graph-view" class="graph-container"></div>
+                    
+                    <button id="proceed-to-optimization" class="btn btn-success mt-3 d-none">
+                        Proceed to Optimization →
+                    </button>
+                </div>
+            </div>
+            
+            <div class="tab-pane" id="optimization-tab">
+                <h3>Query Optimization</h3>
+                <p>This section will contain optimization steps and visualizations.</p>
+                <!-- Placeholder for optimization interface -->
+                <div id="optimization-result-container" class="mt-4 d-none">
+                    <h4>Optimized Relational Algebra</h4>
+                    <div id="optimized-tree" class="json-tree"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/tree-visualizer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/graph-visualizer.js') }}"></script>
+    <script>
+        // Example SQL query for easy testing
+        const exampleQuery = `SELECT customers.id, customers.name, orders.order_id, orders.amount
+FROM customers JOIN orders AS o ON customers.id = o.customer_id
+JOIN temp ON temp.id = customers.id
+WHERE customers.age > 30 AND orders.amount > 100`;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set example query
+            document.getElementById('sql-editor').value = exampleQuery;
+            
+            // Tab navigation
+            const parsingBtn = document.getElementById('parsing-btn');
+            const optimizationBtn = document.getElementById('optimization-btn');
+            const parsingTab = document.getElementById('parsing-tab');
+            const optimizationTab = document.getElementById('optimization-tab');
+            
+            parsingBtn.addEventListener('click', function() {
+                parsingTab.classList.add('active');
+                optimizationTab.classList.remove('active');
+                parsingBtn.classList.add('active');
+                optimizationBtn.classList.remove('active');
+            });
+            
+            optimizationBtn.addEventListener('click', function() {
+                if (!optimizationBtn.disabled) {
+                    parsingTab.classList.remove('active');
+                    optimizationTab.classList.add('active');
+                    parsingBtn.classList.remove('active');
+                    optimizationBtn.classList.add('active');
+                }
+            });
+            
+            // View toggle between raw JSON, JSON tree, visual tree, and graph view
+            const viewRawBtn = document.getElementById('view-raw-btn');
+            const viewJsonBtn = document.getElementById('view-json-btn');
+            const viewTreeBtn = document.getElementById('view-tree-btn');
+            const viewGraphBtn = document.getElementById('view-graph-btn');
+            const jsonRaw = document.getElementById('json-raw');
+            const jsonTree = document.getElementById('json-tree');
+            const visualTree = document.getElementById('visual-tree');
+            const graphView = document.getElementById('graph-view');
+            
+            // Initialize tree visualizer
+            const treeVisualizer = new RelationalAlgebraTree(visualTree);
+            
+            // Initialize graph visualizer
+            const graphVisualizer = new RelationalAlgebraGraph(graphView);
+            
+            viewRawBtn.addEventListener('click', function() {
+                jsonRaw.classList.remove('d-none');
+                jsonTree.classList.add('d-none');
+                visualTree.classList.add('d-none');
+                graphView.classList.add('d-none');
+                viewRawBtn.classList.add('active');
+                viewJsonBtn.classList.remove('active');
+                viewTreeBtn.classList.remove('active');
+                viewGraphBtn.classList.remove('active');
+            });
+            
+            viewJsonBtn.addEventListener('click', function() {
+                jsonRaw.classList.add('d-none');
+                jsonTree.classList.remove('d-none');
+                visualTree.classList.add('d-none');
+                graphView.classList.add('d-none');
+                viewRawBtn.classList.remove('active');
+                viewJsonBtn.classList.add('active');
+                viewTreeBtn.classList.remove('active');
+                viewGraphBtn.classList.remove('active');
+            });
+            
+            viewTreeBtn.addEventListener('click', function() {
+                jsonRaw.classList.add('d-none');
+                jsonTree.classList.add('d-none');
+                visualTree.classList.remove('d-none');
+                graphView.classList.add('d-none');
+                viewRawBtn.classList.remove('active');
+                viewJsonBtn.classList.remove('active');
+                viewTreeBtn.classList.add('active');
+                viewGraphBtn.classList.remove('active');
+            });
+            
+            viewGraphBtn.addEventListener('click', function() {
+                jsonRaw.classList.add('d-none');
+                jsonTree.classList.add('d-none');
+                visualTree.classList.add('d-none');
+                graphView.classList.remove('d-none');
+                viewRawBtn.classList.remove('active');
+                viewJsonBtn.classList.remove('active');
+                viewTreeBtn.classList.remove('active');
+                viewGraphBtn.classList.add('active');
+            });
+            
+            // Parse button click handler
+            document.getElementById('parse-btn').addEventListener('click', function() {
+                const sqlQuery = document.getElementById('sql-editor').value.trim();
+                
+                if (!sqlQuery) {
+                    showError('Please enter an SQL query');
+                    return;
+                }
+                
+                // Show loading indicator
+                document.getElementById('loading-indicator').classList.remove('d-none');
+                document.getElementById('parse-error').classList.add('d-none');
+                document.getElementById('parse-result-container').classList.add('d-none');
+                
+                // Send request to backend
+                fetch('/parse', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'sql_query': sqlQuery
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading indicator
+                    document.getElementById('loading-indicator').classList.add('d-none');
+                    
+                    if (data.success) {
+                        // Display the result
+                        document.getElementById('parse-result-container').classList.remove('d-none');
+                        document.getElementById('json-raw-content').textContent = JSON.stringify(data.result, null, 2);
+                        renderJsonTree(data.result, document.getElementById('json-tree'));
+                        
+                        // Render the visual tree
+                        treeVisualizer.render(data.result);
+                        
+                        // Render the graph view
+                        graphVisualizer.render(data.result);
+                        
+                        // Enable optimization step
+                        document.getElementById('proceed-to-optimization').classList.remove('d-none');
+                        document.getElementById('optimization-btn').disabled = false;
+                    } else {
+                        showError(data.error || 'An unknown error occurred');
+                        if (data.raw_output) {
+                            document.getElementById('parse-error').innerHTML += 
+                                '<hr><pre>' + data.raw_output + '</pre>';
+                        }
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('loading-indicator').classList.add('d-none');
+                    showError('Network error: ' + error.message);
+                });
+            });
+            
+            // Proceed to optimization button
+            document.getElementById('proceed-to-optimization').addEventListener('click', function() {
+                optimizationBtn.click();
+                const rawContent = document.getElementById('json-raw-content').textContent;
+                
+                if (rawContent) {
+                    // This is where you would send the parsed output to the optimization endpoint
+                    // For now, we'll just display the same data
+                    document.getElementById('optimization-result-container').classList.remove('d-none');
+                    renderJsonTree(JSON.parse(rawContent), document.getElementById('optimized-tree'));
+                }
+            });
+            
+            // Helper function to show error messages
+            function showError(message) {
+                const errorElement = document.getElementById('parse-error');
+                errorElement.textContent = message;
+                errorElement.classList.remove('d-none');
+            }
+            
+            // Function to render JSON as a collapsible tree
+            function renderJsonTree(data, container) {
+                container.innerHTML = '';
+                container.appendChild(createJsonTreeNode(data));
+                
+                // Make collapsible sections work
+                const toggles = container.querySelectorAll('.collapse-toggle');
+                toggles.forEach(toggle => {
+                    toggle.addEventListener('click', function() {
+                        const content = this.nextElementSibling;
+                        if (content.style.display === 'none') {
+                            content.style.display = 'block';
+                            this.textContent = this.textContent.replace('►', '▼');
+                        } else {
+                            content.style.display = 'none';
+                            this.textContent = this.textContent.replace('▼', '►');
+                        }
+                    });
+                });
+            }
+            
+            // Function to create a tree node for JSON visualization
+            function createJsonTreeNode(data) {
+                const container = document.createElement('div');
+                
+                if (data === null) {
+                    container.innerHTML = '<span class="tree-null">null</span>';
+                } else if (typeof data === 'object' && !Array.isArray(data)) {
+                    // Object
+                    if (Object.keys(data).length === 0) {
+                        container.innerHTML = '{ }';
+                    } else {
+                        const toggle = document.createElement('span');
+                        toggle.className = 'collapse-toggle';
+                        toggle.textContent = '▼ { ';
+                        container.appendChild(toggle);
+                        
+                        const content = document.createElement('div');
+                        content.className = 'collapse-content';
+                        
+                        for (const key in data) {
+                            const row = document.createElement('div');
+                            row.innerHTML = `<span class="tree-key">"${key}"</span>: `;
+                            const value = createJsonTreeNode(data[key]);
+                            row.appendChild(value);
+                            content.appendChild(row);
+                        }
+                        
+                        container.appendChild(content);
+                        container.innerHTML += ' }';
+                    }
+                } else if (Array.isArray(data)) {
+                    // Array
+                    if (data.length === 0) {
+                        container.innerHTML = '[ ]';
+                    } else {
+                        const toggle = document.createElement('span');
+                        toggle.className = 'collapse-toggle';
+                        toggle.textContent = '▼ [ ';
+                        container.appendChild(toggle);
+                        
+                        const content = document.createElement('div');
+                        content.className = 'collapse-content';
+                        
+                        data.forEach((item, index) => {
+                            const row = document.createElement('div');
+                            const value = createJsonTreeNode(item);
+                            row.appendChild(value);
+                            
+                            if (index < data.length - 1) {
+                                row.innerHTML += ',';
+                            }
+                            
+                            content.appendChild(row);
+                        });
+                        
+                        container.appendChild(content);
+                        container.innerHTML += ' ]';
+                    }
+                } else if (typeof data === 'string') {
+                    container.innerHTML = `<span class="tree-string">"${data}"</span>`;
+                } else if (typeof data === 'number') {
+                    container.innerHTML = `<span class="tree-number">${data}</span>`;
+                } else if (typeof data === 'boolean') {
+                    container.innerHTML = `<span class="tree-boolean">${data}</span>`;
+                } else {
+                    container.textContent = String(data);
+                }
+                
+                return container;
+            }
+        });
+    </script>
+</body>
+</html>
