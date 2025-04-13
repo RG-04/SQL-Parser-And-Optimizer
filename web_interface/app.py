@@ -5,6 +5,7 @@ import os
 import tempfile
 from predicate_pushdown import optimize_query_plan
 from join_optimization import QueryOptimizer
+
 app = Flask(__name__, static_folder='static')
 
 @app.route('/')
@@ -113,7 +114,7 @@ def optimize_join():
         
         # Generate the JSON for the best plan
         best_plan_json = optimizer.generate_best_plan_json(best_plans)
-        
+        naive_plan_json = optimizer.generate_naive_plan_json(naive_plan)
         optimizer.disconnect()
 
         # Print results
@@ -168,9 +169,11 @@ def optimize_join():
             print("-" * 50)
                 
         best_plan_json = json.loads(best_plan_json)
+        naive_plan_json = json.loads(naive_plan_json)
+        
         return jsonify({
             'success': True,
-            'original_plan_json': relational_algebra,
+            'original_plan_json': naive_plan_json,
             'optimized_plan_json': best_plan_json,
         })
             

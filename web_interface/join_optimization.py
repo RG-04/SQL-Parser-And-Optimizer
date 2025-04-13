@@ -316,6 +316,139 @@ class QueryOptimizer:
         
         return json.dumps(result, indent=2)
 
+    def generate_naive_plan_json(self, naive_plan):
+        """
+        Generate a JSON representation of the naive plan with costs.
+        """                
+        naive_order = naive_plan['order']
+        naive_strategies = naive_plan['strategies']
+        naive_method = "fixed" 
+        naive_cost = naive_plan['cost'] 
+        # Create a relational algebra tree with proper accumulated costs
+        # Handle base table scan cost
+        tables_costs = {}
+        join_costs = {}
+        
+        # Calculate base table costs
+        for table in naive_order:
+            try:
+                stats = self.get_table_statistics(table)
+                tables_costs[table] = stats['page_count'] * self.seq_page_cost + stats['row_count'] * self.cpu_tuple_cost
+            except:
+                tables_costs[table] = 100  # Default
+        
+        # Calculate join costs and accumulated costs at each step
+        running_tables = [naive_order[0]]
+        running_cost = tables_costs[naive_order[0]]
+        
+        for i in range(1, len(naive_order)):
+            current_table = naive_order[i]
+            strategy = naive_strategies[i-1] if i-1 < len(naive_strategies) else "hash"
+            
+            # Find join attributes
+            join_attrs = None
+            for prev_table in running_tables:
+                if (prev_table, current_table) in self.join_conditions:
+                    join_attrs = self.join_conditions[(prev_table, current_table)]
+                    break
+                elif (current_table, prev_table) in self.join_conditions:
+                    join_attrs = self.join_conditions[(current_table, prev_table)]
+                    join_attrs = (join_attrs[1], join_attrs[0])
+                    break
+            
+            if join_attrs is None:
+                # Default if no join condition found
+                selectivity = 0.1
+            else:
+                # Use the appropriate selectivity method
+                selectivity = self.estimate_selectivity(
+                    running_tables[-1], current_table, join_attrs, naive_method)
+            
+            # Calculate intermediate result size
+            intermediate_rows = self.get_intermediate_result_size(
+                tuple(running_tables), self.join_conditions, naive_method)
+            
+            # Calculate join cost
+            if len(running_tables) == 1:
+                join_cost = self.estimate_join_cost(
+                    running_tables[0], current_table, join_attrs, strategy, selectivity)
+            else:
+                join_cost = self.estimate_join_cost_with_intermediate(
+                    intermediate_rows, current_table, join_attrs, strategy, selectivity)
+            
+            # Store join cost and update running total
+            join_costs[(tuple(running_tables), current_table)] = join_cost
+            running_cost += join_cost
+            running_tables.append(current_table)
+        
+        # Now build the JSON tree using the calculated costs
+        result = {
+            "type": "project",
+            "cost": naive_cost,  # Use the final best cost from optimization
+            "columns": [
+                {"table": "a", "attr": "id"},
+                {"table": "b", "attr": "id"},
+                {"table": "c", "attr": "id"}
+            ]
+        }
+        
+        # Build join tree with proper accumulated costs
+        current = None
+        accumulated_cost = 0
+        
+        # Create base relation node for first table
+        base_node = {
+            "type": "base_relation",
+            "cost": tables_costs[naive_order[0]],
+            "tables": [{"name": naive_order[0], "alias": naive_order[0].split('_')[-1]}]
+        }
+        
+        current = base_node
+        accumulated_cost = tables_costs[naive_order[0]]
+        
+        # Add joins according to the best order
+        for i in range(1, len(naive_order)):
+            table_name = naive_order[i]
+            strategy = naive_strategies[i-1] if i-1 < len(naive_strategies) else "hash"
+            
+            # Get the join cost for this step
+            join_cost = join_costs.get((tuple(naive_order[:i]), table_name), 0)
+            accumulated_cost += join_cost
+            
+            # Create joined table node
+            joined_table = {
+                "type": "base_relation",
+                "cost": tables_costs[table_name],
+                "tables": [{"name": table_name, "alias": table_name.split('_')[-1]}]
+            }
+            
+            # Create join node with accumulated cost
+            join_node = {
+                "type": "join",
+                "cost": accumulated_cost,
+                "strategy": strategy,
+                "condition": {
+                    "type": "EQ",
+                    "left": {
+                        "table": naive_order[0].split('_')[-1],
+                        "attr": f"join_key_{naive_order[0].split('_')[-1]}{table_name.split('_')[-1]}"
+                    },
+                    "right": {
+                        "table": table_name.split('_')[-1],
+                        "attr": f"join_key_{table_name.split('_')[-1]}{naive_order[0].split('_')[-1]}"
+                    }
+                },
+                "left": current,
+                "right": joined_table
+            }
+            
+            current = join_node
+        
+        # Set the complete tree as the input to the projection
+        result["input"] = current
+        
+        return json.dumps(result, indent=2)
+
     def parse_relational_algebra(self, json_data):
         """
         Parse the relational algebra JSON to extract tables and join conditions.
