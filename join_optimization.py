@@ -170,12 +170,6 @@ class QueryOptimizer:
     def generate_best_plan_json(self, best_plans):
         """
         Generate a JSON representation of the best plan with costs.
-        
-        Args:
-            best_plans (dict): The optimized plans from optimize_join_query
-            
-        Returns:
-            str: JSON string of the best plan with costs
         """
         # Find the plan with the lowest cost
         best_method = None
@@ -197,10 +191,67 @@ class QueryOptimizer:
         print(f"Best join order: {best_order}")
         print(f"Best strategies: {best_strategies}")
         
-        # Create a new relational algebra tree with costs
+        # Create a relational algebra tree with proper accumulated costs
+        # Handle base table scan cost
+        tables_costs = {}
+        join_costs = {}
+        
+        # Calculate base table costs
+        for table in best_order:
+            try:
+                stats = self.get_table_statistics(table)
+                tables_costs[table] = stats['page_count'] * self.seq_page_cost + stats['row_count'] * self.cpu_tuple_cost
+            except:
+                tables_costs[table] = 100  # Default
+        
+        # Calculate join costs and accumulated costs at each step
+        running_tables = [best_order[0]]
+        running_cost = tables_costs[best_order[0]]
+        
+        for i in range(1, len(best_order)):
+            current_table = best_order[i]
+            strategy = best_strategies[i-1] if i-1 < len(best_strategies) else "hash"
+            
+            # Find join attributes
+            join_attrs = None
+            for prev_table in running_tables:
+                if (prev_table, current_table) in self.join_conditions:
+                    join_attrs = self.join_conditions[(prev_table, current_table)]
+                    break
+                elif (current_table, prev_table) in self.join_conditions:
+                    join_attrs = self.join_conditions[(current_table, prev_table)]
+                    join_attrs = (join_attrs[1], join_attrs[0])
+                    break
+            
+            if join_attrs is None:
+                # Default if no join condition found
+                selectivity = 0.1
+            else:
+                # Use the appropriate selectivity method
+                selectivity = self.estimate_selectivity(
+                    running_tables[-1], current_table, join_attrs, best_method)
+            
+            # Calculate intermediate result size
+            intermediate_rows = self.get_intermediate_result_size(
+                tuple(running_tables), self.join_conditions, best_method)
+            
+            # Calculate join cost
+            if len(running_tables) == 1:
+                join_cost = self.estimate_join_cost(
+                    running_tables[0], current_table, join_attrs, strategy, selectivity)
+            else:
+                join_cost = self.estimate_join_cost_with_intermediate(
+                    intermediate_rows, current_table, join_attrs, strategy, selectivity)
+            
+            # Store join cost and update running total
+            join_costs[(tuple(running_tables), current_table)] = join_cost
+            running_cost += join_cost
+            running_tables.append(current_table)
+        
+        # Now build the JSON tree using the calculated costs
         result = {
             "type": "project",
-            "cost": best_cost,
+            "cost": best_cost,  # Use the final best cost from optimization
             "columns": [
                 {"table": "a", "attr": "id"},
                 {"table": "b", "attr": "id"},
@@ -208,64 +259,50 @@ class QueryOptimizer:
             ]
         }
         
-        # Build the join tree based on the best order
+        # Build join tree with proper accumulated costs
         current = None
-        running_cost = 0
+        accumulated_cost = 0
         
-        # Handle base table scan cost
-        try:
-            base_stats = self.get_table_statistics(best_order[0])
-            base_cost = base_stats['page_count'] * self.seq_page_cost
-        except:
-            base_cost = 100  # Default if stats not available
-        
-        running_cost += base_cost
-        
-        # Create the base relation node
+        # Create base relation node for first table
         base_node = {
             "type": "base_relation",
-            "cost": base_cost,
-            "tables": [{"name": best_order[0], "alias": best_order[0].split('_')[-1] if '_' in best_order[0] else best_order[0]}]
+            "cost": tables_costs[best_order[0]],
+            "tables": [{"name": best_order[0], "alias": best_order[0].split('_')[-1]}]
         }
         
         current = base_node
+        accumulated_cost = tables_costs[best_order[0]]
         
         # Add joins according to the best order
         for i in range(1, len(best_order)):
             table_name = best_order[i]
-            strategy = best_strategies[i-1] if i-1 < len(best_strategies) else "hash"  # Default
+            strategy = best_strategies[i-1] if i-1 < len(best_strategies) else "hash"
             
-            # Calculate the approximate join cost
-            if strategy == "nested":
-                join_cost = 1000 * i
-            elif strategy == "hash":
-                join_cost = 800 * i
-            else:  # block
-                join_cost = 500 * i
-                
-            running_cost += join_cost
+            # Get the join cost for this step
+            join_cost = join_costs.get((tuple(best_order[:i]), table_name), 0)
+            accumulated_cost += join_cost
             
             # Create joined table node
             joined_table = {
                 "type": "base_relation",
-                "cost": base_cost / 2,  # Simplified cost for the joined table
-                "tables": [{"name": table_name, "alias": table_name.split('_')[-1] if '_' in table_name else table_name}]
+                "cost": tables_costs[table_name],
+                "tables": [{"name": table_name, "alias": table_name.split('_')[-1]}]
             }
             
-            # Create join node
+            # Create join node with accumulated cost
             join_node = {
                 "type": "join",
-                "cost": running_cost,
+                "cost": accumulated_cost,
                 "strategy": strategy,
                 "condition": {
                     "type": "EQ",
                     "left": {
-                        "table": best_order[0].split('_')[-1] if '_' in best_order[0] else best_order[0],
-                        "attr": f"join_key_{best_order[0].split('_')[-1] if '_' in best_order[0] else best_order[0]}{table_name.split('_')[-1] if '_' in table_name else table_name}"
+                        "table": best_order[0].split('_')[-1],
+                        "attr": f"join_key_{best_order[0].split('_')[-1]}{table_name.split('_')[-1]}"
                     },
                     "right": {
-                        "table": table_name.split('_')[-1] if '_' in table_name else table_name,
-                        "attr": f"join_key_{best_order[0].split('_')[-1] if '_' in best_order[0] else best_order[0]}{table_name.split('_')[-1] if '_' in table_name else table_name}"
+                        "table": table_name.split('_')[-1],
+                        "attr": f"join_key_{table_name.split('_')[-1]}{best_order[0].split('_')[-1]}"
                     }
                 },
                 "left": current,
@@ -873,6 +910,8 @@ class QueryOptimizer:
         json_data = json.loads(rel_algebra_json)
         tables, join_conditions, join_graph = self.parse_relational_algebra(json_data)
         
+        self.join_conditions = join_conditions
+
         if not tables:
             return {"error": "No tables found in the relational algebra"}
             
@@ -1002,7 +1041,7 @@ class QueryOptimizer:
                 'cost': best_cost
             }
         
-        self.disconnect()
+        # self.disconnect()
 
         return best_plans
 
@@ -1036,6 +1075,8 @@ def main():
     # Generate the JSON for the best plan
     best_plan_json = optimizer.generate_best_plan_json(best_plans)
     
+    optimizer.disconnect()
+
     # Write the best plan JSON to a file
     with open('best_plan.json', 'w') as f:
         f.write(best_plan_json)
