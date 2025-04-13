@@ -1,9 +1,9 @@
 /**
- * Query Optimization Visualizer
- * Handles visualization of the optimization process
+ * Join Optimization Visualizer
+ * Handles visualization of the join optimization process
  */
 
-class QueryOptimizationVisualizer {
+class JoinOptimizationVisualizer {
     constructor(container) {
         this.container = container;
         this.originalGraph = null;
@@ -31,9 +31,9 @@ class QueryOptimizationVisualizer {
         originalDiv.className = 'col-md-6 optimization-col';
         originalDiv.innerHTML = `
             <div class="optimization-header">
-                <h4>Original Query Plan</h4>
+                <h4>After Predicate Pushdown</h4>
             </div>
-            <div id="original-graph" class="graph-container"></div>
+            <div id="join-original-graph" class="graph-container"></div>
         `;
         
         // Optimized plan container
@@ -41,55 +41,17 @@ class QueryOptimizationVisualizer {
         optimizedDiv.className = 'col-md-6 optimization-col';
         optimizedDiv.innerHTML = `
             <div class="optimization-header">
-                <h4>Optimized Query Plan (Predicate Pushdown)</h4>
+                <h4>After Join Optimization</h4>
             </div>
-            <div id="optimized-graph" class="graph-container"></div>
+            <div id="join-optimized-graph" class="graph-container"></div>
         `;
         
         // Add columns to row
         rowDiv.appendChild(originalDiv);
         rowDiv.appendChild(optimizedDiv);
         
-        // Add explanation section
-        const explanationDiv = document.createElement('div');
-        explanationDiv.className = 'optimization-explanation mt-3';
-        explanationDiv.innerHTML = `
-            <h5>Predicate Pushdown Optimization</h5>
-            <p>
-                Predicate Pushdown is a query optimization technique that moves filtering operations (WHERE clauses) 
-                as close as possible to the data sources. This reduces the amount of data that needs to be processed 
-                by subsequent operations, improving query performance.
-            </p>
-            <div class="optimization-comparison">
-                <div class="original-explanation">
-                    <h6>Original Plan</h6>
-                    <p>
-                        In the original plan, the filter (SELECT) is applied <strong>after</strong> the join operations.
-                        This means that we must first join all tables and then filter the results.
-                    </p>
-                </div>
-                <div class="optimized-explanation">
-                    <h6>Optimized Plan</h6>
-                    <p>
-                        In the optimized plan, the filter (SELECT) is "pushed down" to be applied <strong>before</strong> 
-                        the join operations, directly to the base table. This reduces the number of rows that need to be 
-                        processed in the subsequent join operations.
-                    </p>
-                </div>
-            </div>
-            <div class="optimization-benefits">
-                <h6>Benefits</h6>
-                <ul>
-                    <li>Reduces the amount of data processed during joins</li>
-                    <li>Decreases intermediate result sizes</li>
-                    <li>Improves overall query execution time</li>
-                </ul>
-            </div>
-        `;
-        
         // Add all elements to container
         visualizationContainer.appendChild(rowDiv);
-        visualizationContainer.appendChild(explanationDiv);
         this.container.appendChild(visualizationContainer);
     }
     
@@ -105,17 +67,9 @@ class QueryOptimizationVisualizer {
         try {
             // Create containers for original and optimized graphs
             this.createOptimizationGraphs(data.original_plan_json, data.optimized_plan_json);
-            
-            // Update explanation if available
-            if (data.explanation) {
-                const explanationDiv = this.container.querySelector('.optimization-explanation p');
-                if (explanationDiv) {
-                    explanationDiv.innerHTML = data.explanation;
-                }
-            }
         } catch (error) {
-            console.error("Error processing optimization data:", error);
-            this.showError("Failed to process optimization data: " + error.message);
+            console.error("Error processing join optimization data:", error);
+            this.showError("Failed to process join optimization data: " + error.message);
         }
     }
     
@@ -123,6 +77,8 @@ class QueryOptimizationVisualizer {
      * Create side-by-side graph visualizations
      */
     createOptimizationGraphs(originalPlan, optimizedPlan) {
+        console.log("Creating join optimization graphs with:", originalPlan, optimizedPlan);
+        
         // Create specialized graph class for optimization view
         class OptimizationGraph {
             constructor(containerId, data, title) {
@@ -286,21 +242,21 @@ class QueryOptimizationVisualizer {
                 
                 // Get canvas dimensions
                 const canvasWidth = this.container.clientWidth;
-                const canvasHeight = this.container.clientHeight || 700; // Use default if height not set
-                const padding = 60; // Increased padding for better spacing
+                const canvasHeight = 450; // Match the height of the canvas
+                const padding = 60;
                 
                 // Position nodes level by level
                 Object.keys(nodesByDepth).forEach(depth => {
                     const nodesAtDepth = nodesByDepth[depth];
                     const depthInt = parseInt(depth);
                     
-                    // Calculate vertical position with more space between levels
+                    // Calculate vertical position
                     const verticalStep = (canvasHeight - 2 * padding) / (maxDepth + 1);
                     const y = padding + depthInt * verticalStep;
                     
-                    // Calculate horizontal positions with more spacing
+                    // Calculate horizontal positions
                     const horizontalSpacing = Math.max(
-                        100, // Minimum spacing
+                        100,
                         (canvasWidth - 2 * padding) / (nodesAtDepth.length + 1)
                     );
                     
@@ -310,18 +266,14 @@ class QueryOptimizationVisualizer {
                     });
                 });
                 
-                // Additional spacing for parent nodes to make the tree more readable
+                // Center parent nodes over their children
                 this.nodes.forEach(node => {
-                    // Find all children of this node
                     const children = this.nodes.filter(n => {
                         return this.edges.some(e => e.from === node.id && e.to === n.id);
                     });
                     
                     if (children.length > 0) {
-                        // Calculate the average x-position of children
                         const avgX = children.reduce((sum, child) => sum + child.x, 0) / children.length;
-                        
-                        // Move the parent node to be above its children
                         node.x = avgX;
                     }
                 });
@@ -343,7 +295,7 @@ class QueryOptimizationVisualizer {
                     const fromRadius = fromNode.size / 2;
                     const toRadius = toNode.size / 2;
                     
-                    // Calculate edge start and end points accounting for node radii
+                    // Calculate edge start and end points
                     const angle = Math.atan2(toNode.y - fromNode.y, toNode.x - fromNode.x);
                     
                     // Start point - at the edge of the from node
@@ -354,7 +306,7 @@ class QueryOptimizationVisualizer {
                     const endX = toNode.x - Math.cos(angle) * toRadius;
                     const endY = toNode.y - Math.sin(angle) * toRadius;
                     
-                    // Calculate the length between the adjusted points
+                    // Calculate the length
                     const length = Math.sqrt(
                         Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2)
                     );
@@ -434,11 +386,19 @@ class QueryOptimizationVisualizer {
                         if (node.data.condition) {
                             tooltipContent = `ON: ${this.formatCondition(node.data.condition)}`;
                         }
+                        // Add cost information if available
+                        if (node.data.cost !== undefined) {
+                            tooltipContent += ` (Cost: ${node.data.cost})`;
+                        }
                         break;
                     case 'base_relation':
                         if (node.data.tables && node.data.tables.length > 0) {
                             tooltipContent = node.data.tables.map(t => 
                                 t.alias ? `${t.name} AS ${t.alias}` : t.name).join(', ');
+                        }
+                        // Add cost information if available
+                        if (node.data.cost !== undefined) {
+                            tooltipContent += ` (Cost: ${node.data.cost})`;
                         }
                         break;
                     case 'subquery':
@@ -505,8 +465,8 @@ class QueryOptimizationVisualizer {
         }
         
         // Create optimized and original graph visualizations
-        new OptimizationGraph('original-graph', originalPlan, null);
-        new OptimizationGraph('optimized-graph', optimizedPlan, null);
+        new OptimizationGraph('join-original-graph', originalPlan, null);
+        new OptimizationGraph('join-optimized-graph', optimizedPlan, null);
     }
     
     /**
@@ -515,7 +475,7 @@ class QueryOptimizationVisualizer {
     showError(message) {
         const errorDiv = document.createElement('div');
         errorDiv.className = 'alert alert-danger';
-        errorDiv.textContent = `Optimization Error: ${message}`;
+        errorDiv.textContent = `Join Optimization Error: ${message}`;
         
         // Clear container and show error
         this.container.innerHTML = '';
@@ -523,85 +483,74 @@ class QueryOptimizationVisualizer {
     }
 }
 
-// Function to run optimization
-function runOptimization() {
-    console.log("Running optimization...");
+// Function to run join optimization
+function runJoinOptimization() {
+    console.log("Running join optimization...");
     
-    const rawContent = document.getElementById('json-raw-content').textContent;
-    
-    if (!rawContent) {
-        showOptimizationError('No query plan to optimize');
+    // Get the optimized plan from the predicate pushdown step
+    if (!window.lastOptimizedPlan) {
+        showJoinOptimizationError('Please run predicate pushdown optimization first');
         return;
     }
     
     // Show loading indicator
-    document.getElementById('optimization-loading').classList.remove('d-none');
-    document.getElementById('optimization-error').classList.add('d-none');
+    document.getElementById('join-optimization-loading').classList.remove('d-none');
+    document.getElementById('join-optimization-error').classList.add('d-none');
     
-    console.log("Sending optimization request...");
+    console.log("Sending join optimization request...");
     
-    // Log what we're sending
-    const requestData = {
-        'relational_algebra': JSON.parse(rawContent)
-    };
-    console.log("Request data:", requestData);
-    
-    // Send the parsed relational algebra to the optimizer
-    fetch('/optimize/pred_push/', {
+    // Send the optimized plan to the join optimizer
+    fetch('/optimize/join/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestData)
+        body: JSON.stringify({
+            'relational_algebra': window.lastOptimizedPlan
+        })
     })
-    .then(response => {
-        console.log("Response status:", response.status);
-        return response.json();
-    })
+    .then(response => response.json())
     .then(data => {
-        console.log("Response data:", data);
+        console.log("Join optimization response:", data);
+        
         // Hide loading indicator
-        document.getElementById('optimization-loading').classList.add('d-none');
+        document.getElementById('join-optimization-loading').classList.add('d-none');
         
         if (data.success) {
             try {
-                // Initialize the optimization visualizer
-                const container = document.getElementById('optimization-result-container');
-                container.innerHTML = '<div id="optimization-visualizer"></div>';
+                // Create the container for the visualizer
+                const container = document.getElementById('join-optimization-result-container');
+                container.innerHTML = '<div id="join-optimization-visualizer" style="height:700px;width:100%;"></div>';
                 
-                console.log("Creating QueryOptimizationVisualizer instance");
-                const optimizationVisualizer = new QueryOptimizationVisualizer(
-                    document.getElementById('optimization-visualizer')
+                // Create the visualizer
+                const visualizer = new JoinOptimizationVisualizer(
+                    document.getElementById('join-optimization-visualizer')
                 );
                 
-                // Process and display the optimization data
-                console.log("Processing optimization data");
-                optimizationVisualizer.processOptimizationData(data);
+                // Process the data
+                visualizer.processOptimizationData(data);
                 
-                // Store the optimized plan for the next step
-                window.lastOptimizedPlan = data.optimized_plan_json;
-                
-                // Enable the join optimization button
-                document.getElementById('join-optimization-btn').disabled = false;
+                // Store the optimized plan for any further steps
+                window.joinOptimizedPlan = data.optimized_plan_json;
                 
             } catch (error) {
-                console.error("Error initializing visualizer:", error);
-                showOptimizationError('Error initializing visualizer: ' + error.message);
+                console.error("Error creating join visualization:", error);
+                showJoinOptimizationError('Error creating visualization: ' + error.message);
             }
         } else {
-            showOptimizationError(data.error || 'An unknown error occurred during optimization');
+            showJoinOptimizationError(data.error || 'An unknown error occurred during join optimization');
         }
     })
     .catch(error => {
         console.error("Fetch error:", error);
-        document.getElementById('optimization-loading').classList.add('d-none');
-        showOptimizationError('Network error: ' + error.message);
+        document.getElementById('join-optimization-loading').classList.add('d-none');
+        showJoinOptimizationError('Network error: ' + error.message);
     });
 }
 
-// Helper function to show optimization error messages
-function showOptimizationError(message) {
-    const errorElement = document.getElementById('optimization-error');
+// Helper function to show join optimization error messages
+function showJoinOptimizationError(message) {
+    const errorElement = document.getElementById('join-optimization-error');
     errorElement.textContent = message;
     errorElement.classList.remove('d-none');
 }

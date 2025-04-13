@@ -15,9 +15,12 @@
         <h1 class="mb-4">SQL Query Parser & Optimizer</h1>
         
         <div class="step-nav">
-            <button class="btn btn-outline-primary step-btn active" id="parsing-btn">1. Parsing</button>
-            <button class="btn btn-outline-primary step-btn" id="optimization-btn" disabled>2. Optimization</button>
-            <!-- Additional steps can be added here -->
+            <div class="step-nav">
+                <button class="btn btn-outline-primary step-btn active" id="parsing-btn">1. Parsing</button>
+                <button class="btn btn-outline-primary step-btn" id="predicate-pushdown-btn" disabled>2. Predicate Pushdown</button>
+                <button class="btn btn-outline-primary step-btn" id="join-optimization-btn" disabled>3. Join Optimization</button>
+                <!-- Additional steps can be added here -->
+            </div>
         </div>
         
         <div class="tab-content">
@@ -77,6 +80,28 @@
                 
                 <div id="optimization-error" class="alert alert-danger mt-3 d-none"></div>
             </div>
+
+            <div class="tab-pane" id="join-optimization-tab">
+                <h3>Join Optimization</h3>
+                <p>This section shows the results of applying join optimization techniques to the query plan.</p>
+                
+                <div class="alert alert-info">
+                    <strong>Optimization Step:</strong> Join Order Optimization
+                </div>
+                
+                <div id="join-optimization-result-container">
+                    <!-- Join optimization visualization will be inserted here -->
+                </div>
+                
+                <div id="join-optimization-loading" class="mt-3 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span class="ms-2">Optimizing join order...</span>
+                </div>
+                
+                <div id="join-optimization-error" class="alert alert-danger mt-3 d-none"></div>
+            </div>
         </div>
     </div>
 
@@ -84,12 +109,14 @@
     <script src="{{ url_for('static', filename='js/tree-visualizer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/graph-visualizer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/optimization-visualizer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/join-optimization-visualizer.js') }}"></script>
     <script>
         // Example SQL query for easy testing
-        const exampleQuery = `SELECT customers.id, customers.name, orders.order_id, orders.amount
-FROM customers JOIN orders AS o ON customers.id = o.customer_id
-JOIN temp ON temp.id = customers.id
-WHERE customers.age > 30 AND orders.amount > 100`;
+        const exampleQuery = `SELECT table_a.id, table_b.id
+FROM table_b
+JOIN table_c ON table_c.join_key_bc = table_b.join_key_ab
+JOIN table_a ON table_b.join_key_ab = table_a.join_key_ab
+WHERE table_b.id > 1`;
 
         document.addEventListener('DOMContentLoaded', function() {
             // Set example query
@@ -97,27 +124,49 @@ WHERE customers.age > 30 AND orders.amount > 100`;
             
             // Tab navigation
             const parsingBtn = document.getElementById('parsing-btn');
-            const optimizationBtn = document.getElementById('optimization-btn');
+            const predicatePushdownBtn = document.getElementById('predicate-pushdown-btn');
+            const joinOptimizationBtn = document.getElementById('join-optimization-btn');
             const parsingTab = document.getElementById('parsing-tab');
             const optimizationTab = document.getElementById('optimization-tab');
+            const joinOptimizationTab = document.getElementById('join-optimization-tab');
             
             parsingBtn.addEventListener('click', function() {
                 parsingTab.classList.add('active');
                 optimizationTab.classList.remove('active');
+                joinOptimizationTab.classList.remove('active');
                 parsingBtn.classList.add('active');
-                optimizationBtn.classList.remove('active');
+                predicatePushdownBtn.classList.remove('active');
+                joinOptimizationBtn.classList.remove('active');
             });
             
-            optimizationBtn.addEventListener('click', function() {
-                if (!optimizationBtn.disabled) {
+            predicatePushdownBtn.addEventListener('click', function() {
+                if (!predicatePushdownBtn.disabled) {
                     parsingTab.classList.remove('active');
                     optimizationTab.classList.add('active');
+                    joinOptimizationTab.classList.remove('active');
                     parsingBtn.classList.remove('active');
-                    optimizationBtn.classList.add('active');
+                    predicatePushdownBtn.classList.add('active');
+                    joinOptimizationBtn.classList.remove('active');
                     
                     // If we haven't already loaded the optimization visualization
                     if (!document.getElementById('optimization-visualizer')) {
                         runOptimization();
+                    }
+                }
+            });
+            
+            joinOptimizationBtn.addEventListener('click', function() {
+                if (!joinOptimizationBtn.disabled) {
+                    parsingTab.classList.remove('active');
+                    optimizationTab.classList.remove('active');
+                    joinOptimizationTab.classList.add('active');
+                    parsingBtn.classList.remove('active');
+                    predicatePushdownBtn.classList.remove('active');
+                    joinOptimizationBtn.classList.add('active');
+                    
+                    // Run join optimization if not already loaded
+                    if (!document.getElementById('join-optimization-visualizer')) {
+                        runJoinOptimization();
                     }
                 }
             });
@@ -225,7 +274,7 @@ WHERE customers.age > 30 AND orders.amount > 100`;
                         
                         // Enable optimization step
                         document.getElementById('proceed-to-optimization').classList.remove('d-none');
-                        document.getElementById('optimization-btn').disabled = false;
+                        document.getElementById('predicate-pushdown-btn').disabled = false;
                     } else {
                         showError(data.error || 'An unknown error occurred');
                         if (data.raw_output) {
