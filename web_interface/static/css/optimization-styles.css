@@ -1,8 +1,72 @@
+/* Optimization Visualization Styles */
+.optimization-visualization {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border: 1px solid #e0e0e0;
+}
+
+.optimization-row {
+    margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.optimization-col {
+    padding: 10px;
+    flex: 1 1 500px; /* Allow columns to grow but with a minimum width */
+}
+
+.optimization-header {
+    text-align: center;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.optimization-header h4 {
+    margin: 0;
+    color: #495057;
+    font-size: 1.2rem;
+}
+
+/* Graph container for optimization view */
+#original-graph, #optimized-graph {
+    height: 700px; /* Increased height */
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    position: relative;
+    overflow: visible; /* Allow overflow for better visualization */
+    background-color: #ffffff;
+    margin-bottom: 30px;
+}
+
+.graph-canvas {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+/* Ensure nodes are always visible */
+#original-graph .graph-node,
+#optimized-graph .graph-node {
+    min-width: 60px;
+    min-height: 60px;
+    z-index: 5;
+}
+
+/* Increase spacing between nodes */
+.graph-canvas {
+    padding: 20px;
+}
+
 .optimization-explanation {
     background-color: white;
     padding: 15px;
     border-radius: 5px;
     border: 1px solid #dee2e6;
+    margin-top: 20px; /* Add space between graphs and explanation */
 }
 
 .optimization-explanation h5 {
@@ -15,10 +79,11 @@
 .optimization-comparison {
     display: flex;
     margin: 15px 0;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
 }
 
 .original-explanation, .optimized-explanation {
-    flex: 1;
+    flex: 1 1 300px; /* Allow columns to grow with a minimum width */
     padding: 10px;
 }
 
@@ -66,4 +131,26 @@
 
 #optimized-graph .graph-node-select {
     box-shadow: 0 0 10px rgba(25, 135, 84, 0.5);
+}
+
+/* Ensure tooltip is always visible */
+#original-graph .graph-tooltip,
+#optimized-graph .graph-tooltip {
+    z-index: 100;
+}
+
+/* Media query for responsive layout */
+@media (max-width: 1200px) {
+    .optimization-row {
+        flex-direction: column;
+    }
+    
+    .optimization-col {
+        width: 100%;
+        max-width: none;
+    }
+    
+    #original-graph, #optimized-graph {
+        height: 500px;
+    }
 }

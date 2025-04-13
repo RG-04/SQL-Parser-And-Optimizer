@@ -55,7 +55,7 @@ def parse_sql():
         # Clean up the temporary file
         os.unlink(temp_file_name)
 
-@app.route('/optimize', methods=['POST'])
+@app.route('/optimize/pred_push/', methods=['POST'])
 def optimize_query():
     print("Optimize endpoint called: ", request.json)  # Debug output
     

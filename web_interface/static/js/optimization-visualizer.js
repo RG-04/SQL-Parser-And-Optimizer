@@ -286,28 +286,47 @@ class QueryOptimizationVisualizer {
                 
                 // Get canvas dimensions
                 const canvasWidth = this.container.clientWidth;
-                const canvasHeight = 450; // Fixed height
-                const padding = 30;
+                const canvasHeight = this.container.clientHeight || 700; // Use default if height not set
+                const padding = 60; // Increased padding for better spacing
                 
                 // Position nodes level by level
                 Object.keys(nodesByDepth).forEach(depth => {
                     const nodesAtDepth = nodesByDepth[depth];
                     const depthInt = parseInt(depth);
                     
-                    // Calculate vertical position
+                    // Calculate vertical position with more space between levels
                     const verticalStep = (canvasHeight - 2 * padding) / (maxDepth + 1);
                     const y = padding + depthInt * verticalStep;
                     
-                    // Calculate horizontal positions
-                    const horizontalStep = (canvasWidth - 2 * padding) / (nodesAtDepth.length + 1);
+                    // Calculate horizontal positions with more spacing
+                    const horizontalSpacing = Math.max(
+                        100, // Minimum spacing
+                        (canvasWidth - 2 * padding) / (nodesAtDepth.length + 1)
+                    );
                     
                     nodesAtDepth.forEach((node, index) => {
                         node.y = y;
-                        node.x = padding + (index + 1) * horizontalStep;
+                        node.x = padding + (index + 1) * horizontalSpacing;
                     });
                 });
+                
+                // Additional spacing for parent nodes to make the tree more readable
+                this.nodes.forEach(node => {
+                    // Find all children of this node
+                    const children = this.nodes.filter(n => {
+                        return this.edges.some(e => e.from === node.id && e.to === n.id);
+                    });
+                    
+                    if (children.length > 0) {
+                        // Calculate the average x-position of children
+                        const avgX = children.reduce((sum, child) => sum + child.x, 0) / children.length;
+                        
+                        // Move the parent node to be above its children
+                        node.x = avgX;
+                    }
+                });
             }
-            
+
             renderGraph(canvas) {
                 // Render edges first
                 this.edges.forEach((edge, index) => {
@@ -320,18 +339,32 @@ class QueryOptimizationVisualizer {
                     edgeElement.className = 'graph-edge';
                     edgeElement.id = `${this.container.id}_edge_${index}`;
                     
-                    // Calculate edge position and rotation
+                    // Calculate node radii
+                    const fromRadius = fromNode.size / 2;
+                    const toRadius = toNode.size / 2;
+                    
+                    // Calculate edge start and end points accounting for node radii
                     const angle = Math.atan2(toNode.y - fromNode.y, toNode.x - fromNode.x);
+                    
+                    // Start point - at the edge of the from node
+                    const startX = fromNode.x + Math.cos(angle) * fromRadius;
+                    const startY = fromNode.y + Math.sin(angle) * fromRadius;
+                    
+                    // End point - at the edge of the to node
+                    const endX = toNode.x - Math.cos(angle) * toRadius;
+                    const endY = toNode.y - Math.sin(angle) * toRadius;
+                    
+                    // Calculate the length between the adjusted points
                     const length = Math.sqrt(
-                        Math.pow(toNode.x - fromNode.x, 2) + Math.pow(toNode.y - fromNode.y, 2)
+                        Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2)
                     );
                     
                     // Set edge styles
                     edgeElement.style.width = `${length}px`;
                     edgeElement.style.height = '2px';
                     edgeElement.style.position = 'absolute';
-                    edgeElement.style.left = `${fromNode.x}px`;
-                    edgeElement.style.top = `${fromNode.y}px`;
+                    edgeElement.style.left = `${startX}px`;
+                    edgeElement.style.top = `${startY}px`;
                     edgeElement.style.transformOrigin = '0 0';
                     edgeElement.style.transform = `rotate(${angle}rad)`;
                     edgeElement.style.backgroundColor = '#adb5bd';
@@ -514,7 +547,7 @@ function runOptimization() {
     console.log("Request data:", requestData);
     
     // Send the parsed relational algebra to the optimizer
-    fetch('/optimize', {
+    fetch('/optimize/pred_push/', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

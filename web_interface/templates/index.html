@@ -245,62 +245,6 @@ WHERE customers.age > 30 AND orders.amount > 100`;
                 optimizationBtn.click();
             });
             
-            // Function to run optimization
-            function runOptimization() {
-                const rawContent = document.getElementById('json-raw-content').textContent;
-                
-                if (!rawContent) {
-                    showOptimizationError('No query plan to optimize');
-                    return;
-                }
-                
-                // Show loading indicator
-                document.getElementById('optimization-loading').classList.remove('d-none');
-                document.getElementById('optimization-error').classList.add('d-none');
-                
-                // Send the parsed relational algebra to the optimizer
-                fetch('/optimize', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        'relational_algebra': JSON.parse(rawContent)
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    // Hide loading indicator
-                    document.getElementById('optimization-loading').classList.add('d-none');
-                    
-                    if (data.success) {
-                        // Initialize the optimization visualizer
-                        const container = document.getElementById('optimization-result-container');
-                        container.innerHTML = '<div id="optimization-visualizer"></div>';
-                        
-                        const optimizationVisualizer = new QueryOptimizationVisualizer(
-                            document.getElementById('optimization-visualizer')
-                        );
-                        
-                        // Process and display the optimization data
-                        optimizationVisualizer.processOptimizationData(data);
-                    } else {
-                        showOptimizationError(data.error || 'An unknown error occurred during optimization');
-                    }
-                })
-                .catch(error => {
-                    document.getElementById('optimization-loading').classList.add('d-none');
-                    showOptimizationError('Network error: ' + error.message);
-                });
-            }
-            
-            // Helper function to show optimization error messages
-            function showOptimizationError(message) {
-                const errorElement = document.getElementById('optimization-error');
-                errorElement.textContent = message;
-                errorElement.classList.remove('d-none');
-            }
-            
             // Helper function to show error messages
             function showError(message) {
                 const errorElement = document.getElementById('parse-error');
