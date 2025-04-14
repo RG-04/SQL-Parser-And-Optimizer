@@ -1,0 +1,100 @@
+{
+  "common_expressions": {
+    "expr_0": {
+      "type": "project",
+      "columns": [
+        {
+          "table": "a",
+          "attr": "id"
+        }
+      ],
+      "input": {
+        "type": "base_relation",
+        "tables": [
+          {
+            "name": "a"
+          }
+        ]
+      }
+    }
+  },
+  "query": {
+    "type": "project",
+    "columns": [
+      {
+        "table": "a",
+        "attr": "id"
+      },
+      {
+        "table": "b",
+        "attr": "id"
+      }
+    ],
+    "input": {
+      "type": "join",
+      "condition": {
+        "type": "EQ",
+        "left": {
+          "table": "tmp2",
+          "attr": "a.id"
+        },
+        "right": {
+          "table": "tmp",
+          "attr": "a.id"
+        }
+      },
+      "left": {
+        "type": "join",
+        "condition": {
+          "type": "EQ",
+          "left": {
+            "table": "tmp",
+            "attr": "a.id"
+          },
+          "right": {
+            "table": "b",
+            "attr": "id"
+          }
+        },
+        "left": {
+          "type": "select",
+          "condition": {
+            "type": "GT",
+            "left": {
+              "table": "b",
+              "attr": "id"
+            },
+            "right": {
+              "type": "int",
+              "value": 1
+            }
+          },
+          "input": {
+            "type": "base_relation",
+            "tables": [
+              {
+                "name": "b"
+              }
+            ]
+          }
+        },
+        "right": {
+          "type": "subquery",
+          "alias": "tmp",
+          "query": {
+            "type": "expr_ref",
+            "id": "expr_0"
+          }
+        }
+      },
+      "right": {
+        "type": "subquery",
+        "alias": "tmp2",
+        "query": {
+          "type": "expr_ref",
+          "id": "expr_0"
+        }
+      }
+    }
+  }
+}

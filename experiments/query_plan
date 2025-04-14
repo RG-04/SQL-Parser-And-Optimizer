@@ -1,0 +1,31 @@
+digraph QueryPlan {
+	rankdir=TB
+	node [fontname=Helvetica fontsize=10 style=filled]
+	node_1 [label="Project
+[a.id, b.id]" fillcolor="#D5F5E3" shape=box]
+	node_2 [label="Join
+(a.id EQ a.id)" fillcolor="#AED6F1" shape=diamond]
+	node_3 [label="Join
+(a.id EQ id)" fillcolor="#AED6F1" shape=diamond]
+	node_4 [label="Select
+(b.id GT 1)" fillcolor="#F5B7B1" shape=ellipse]
+	node_5 [label="Base Relation
+[b]" fillcolor="#F9E79F" shape=oval]
+	node_4 -> node_5
+	node_6 [label="Subquery
+[tmp]" fillcolor="#D7BDE2" shape=parallelogram]
+	node_7 [label="Project
+[a.id]" fillcolor="#D5F5E3" shape=box]
+	node_8 [label="Base Relation
+[a]" fillcolor="#F9E79F" shape=oval]
+	node_7 -> node_8
+	node_6 -> node_7
+	node_3 -> node_4
+	node_3 -> node_6
+	node_9 [label="Subquery
+[tmp2]" fillcolor="#D7BDE2" shape=parallelogram]
+	node_9 -> node_7
+	node_2 -> node_3
+	node_2 -> node_9
+	node_1 -> node_2
+}
