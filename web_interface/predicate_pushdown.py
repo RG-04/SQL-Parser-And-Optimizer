@@ -596,6 +596,8 @@ def optimize_query_plan(json_str):
         print("Original Logical Plan:")
         print(logical_plan)
         
+        original_plan = logical_plan.__str__()
+
         # Apply predicate pushdown
         optimized_plan = predicate_pushdown(logical_plan)
         
@@ -607,7 +609,7 @@ def optimize_query_plan(json_str):
         optimized_json = logical_plan_to_json(optimized_plan)
         
         return {
-            "original_plan_str": logical_plan.__str__(),
+            "original_plan_str": original_plan,
             "optimized_plan_str": optimized_plan.__str__(),
             "optimized_plan_json": optimized_json,
             "original_plan_json": logical_json

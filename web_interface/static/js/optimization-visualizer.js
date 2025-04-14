@@ -63,18 +63,18 @@ class QueryOptimizationVisualizer {
             <div class="optimization-comparison">
                 <div class="original-explanation">
                     <h6>Original Plan</h6>
-                    <p>
+                    <pre>
                         In the original plan, the filter (SELECT) is applied <strong>after</strong> the join operations.
                         This means that we must first join all tables and then filter the results.
-                    </p>
+                    </pre>
                 </div>
                 <div class="optimized-explanation">
                     <h6>Optimized Plan</h6>
-                    <p>
+                    <pre>
                         In the optimized plan, the filter (SELECT) is "pushed down" to be applied <strong>before</strong> 
                         the join operations, directly to the base table. This reduces the number of rows that need to be 
                         processed in the subsequent join operations.
-                    </p>
+                    </pre>
                 </div>
             </div>
             <div class="optimization-benefits">
@@ -105,14 +105,27 @@ class QueryOptimizationVisualizer {
         try {
             // Create containers for original and optimized graphs
             this.createOptimizationGraphs(data.original_plan_json, data.optimized_plan_json);
-            
-            // Update explanation if available
-            if (data.explanation) {
-                const explanationDiv = this.container.querySelector('.optimization-explanation p');
-                if (explanationDiv) {
-                    explanationDiv.innerHTML = data.explanation;
+
+            if(data.original_plan_str){
+                const highlighted = data.original_plan_str
+                    .replace(/\b(FILTER|SCAN)\b/g, '<b>$1</b>');
+
+                const originalPlanStrDiv = this.container.querySelector('.original-explanation pre');
+                if (originalPlanStrDiv) {
+                    originalPlanStrDiv.innerHTML = highlighted;
                 }
             }
+
+            if (data.optimized_plan_str) {
+                const highlighted = data.optimized_plan_str
+                    .replace(/\b(FILTER|SCAN)\b/g, '<b>$1</b>');
+            
+                const optimizedPlanStrDiv = this.container.querySelector('.optimized-explanation pre');
+                if (optimizedPlanStrDiv) {
+                    optimizedPlanStrDiv.innerHTML = highlighted;
+                }
+            }
+            
         } catch (error) {
             console.error("Error processing optimization data:", error);
             this.showError("Failed to process optimization data: " + error.message);

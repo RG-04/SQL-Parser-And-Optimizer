@@ -58,7 +58,7 @@ def parse_sql():
         os.unlink(temp_file_name)
 
 @app.route('/optimize/pred_push/', methods=['POST'])
-def optimize_query():
+def optimize_predpush():
     print("Predicate pushdown endpoint called: ", request.json)  # Debug output
     
     try:
@@ -67,14 +67,19 @@ def optimize_query():
         result = optimize_query_plan(json.dumps(relational_algebra))
         
         optimized_plan = result["optimized_plan_json"]
+        original_plan_str = result["original_plan_str"]
+        optimized_plan_str = result["optimized_plan_str"]
         
         print("Successfully read example files")  # Debug output
+        print("Optimized plan: ", optimized_plan_str)  # Debug output
+        print("Original plan: ", original_plan_str)  # Debug output
         
         return jsonify({
             'success': True,
             'original_plan_json': relational_algebra,
             'optimized_plan_json': optimized_plan,
-            'explanation': 'Predicate pushdown moved the filter condition (b.id > 1) down to be applied directly to the base table.'
+            'original_plan_str': original_plan_str,
+            'optimized_plan_str': optimized_plan_str
         })
         
             
