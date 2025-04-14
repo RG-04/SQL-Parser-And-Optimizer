@@ -7,3 +7,4 @@ main.o
 lex.yy.c
 *.o
 sql_to_ra
+*.svg
