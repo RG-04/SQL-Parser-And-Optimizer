@@ -128,20 +128,21 @@
 }
 
 .graph-image-container {
-    height: 400px;
+    max-height: 500px;
     background-color: #f8f9fa;
     border: 1px solid #e0e0e0;
     border-radius: 5px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     margin-bottom: 20px;
+
+    overflow: auto;              /* Allow scroll if image is larger */
+    padding: 10px;               /* Some breathing room around the image */
+    text-align: center;          /* Center image horizontally */
 }
 
 .plan-image {
-    max-height: 380px;
     max-width: 100%;
-    object-fit: contain;
+    height: auto;                /* Maintain aspect ratio */
+    display: inline-block;       /* Respect text-align: center */
 }
 
 /* Styles for the common expressions section */
