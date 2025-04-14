@@ -2,6 +2,7 @@ import json
 import itertools
 from collections import defaultdict, deque
 import psycopg2
+import copy
 
 class QueryOptimizer:
     def __init__(self, db_params):
@@ -314,7 +315,8 @@ class QueryOptimizer:
         # Set the complete tree as the input to the projection
         result["input"] = current
         
-        return json.dumps(result, indent=2)
+        # return json.dumps(result, indent=2)
+        return current
 
     def parse_relational_algebra(self, json_data):
         """
@@ -725,6 +727,7 @@ class QueryOptimizer:
                         ndv2 = stats2['columns'][attr2]['ndv']
                         max_ndv = max(ndv1, ndv2)
                         return 1.0 / max_ndv if max_ndv > 0 else 0.1
+                    
         except Exception as e:
             print(f"Error in selectivity estimation: {e}")
             return 0.1  # Default on error
@@ -760,24 +763,17 @@ class QueryOptimizer:
         output_rows = row_count1 * row_count2 * selectivity
         
         if strategy == "hash":
-            # Hash Join Cost Estimation
-            # Cost of building hash table + cost of probing
             build_cost = page_count1 * self.seq_page_cost + row_count1 * self.cpu_tuple_cost
             probe_cost = page_count2 * self.seq_page_cost + row_count2 * self.cpu_tuple_cost
             
-            # Additional CPU cost for hash operations
             hash_cpu_cost = (row_count1 + output_rows) * self.cpu_operator_cost
             
             return build_cost + probe_cost + hash_cpu_cost
         
         elif strategy == "nested":
-            # Nested Loop Join Cost Estimation
-            # For each outer row, scan the inner table
             return page_count1 * self.seq_page_cost + row_count1 * page_count2 * self.random_page_cost
         
         elif strategy == "block":
-            # Block Nested Loop Cost Estimation
-            # For each block of outer table, scan the inner table
             buffer_size = 8 * 1024 * 1024  # 8MB buffer size (example)
             block_size = buffer_size // self.page_size  # Number of pages in a block
             
@@ -896,6 +892,7 @@ class QueryOptimizer:
         """
         Find the optimal join order and strategy for a query.
         Modified to ensure variety in join strategies.
+        Enhanced with detailed DP table tracing.
         
         Args:
             rel_algebra_json (str): JSON string of the relational algebra
@@ -942,20 +939,31 @@ class QueryOptimizer:
             # Get strategy preference for this method
             strategy_preference = method_to_strategy_preference.get(method, self.join_strategies)
             
-            for join_order in join_orders:
+            print(f"\n{'='*50}")
+            print(f"TRACING DP TABLE FOR METHOD: {method}")
+            print(f"Strategy preference: {strategy_preference}")
+            print(f"{'='*50}")
+            
+            for join_order_idx, join_order in enumerate(join_orders):
                 # For each join order, find the best combination of join strategies
                 dp_table = {}  # Dynamic programming table
                 dp_strategies = {}  # Store best strategies
+                
+                print(f"\nJoin order #{join_order_idx+1}: {join_order}")
                 
                 # Base case: single table (no joins)
                 stats = self.get_table_statistics(join_order[0])                    
                 dp_table[(join_order[0],)] = stats['page_count'] * self.seq_page_cost
                 dp_strategies[(join_order[0],)] = []
                 
+                print(f"  Base case - Single table {join_order[0]}: cost = {dp_table[(join_order[0],)]}")
+                
                 # Build left-deep tree
                 for i in range(1, len(join_order)):
                     current_table = join_order[i]
-                    prefix = join_order[:i]
+                    prefix = tuple(join_order[:i])  # Ensure prefix is a tuple for dp_table key
+                    
+                    print(f"\n  Step {i}: Joining table {current_table} with prefix {prefix}")
                     
                     best_prefix_cost = float('inf')
                     best_strategy = None
@@ -968,61 +976,83 @@ class QueryOptimizer:
                         if (prev_table, current_table) in join_conditions:
                             join_table = prev_table
                             join_attrs = join_conditions[(prev_table, current_table)]
+                            print(f"    Found join condition: {prev_table}.{join_attrs[0]} = {current_table}.{join_attrs[1]}")
                             break
                         elif (current_table, prev_table) in join_conditions:
                             join_table = prev_table
                             join_attrs = join_conditions[(current_table, prev_table)]
                             join_attrs = (join_attrs[1], join_attrs[0])  # Swap attributes
+                            print(f"    Found join condition (swapped): {prev_table}.{join_attrs[0]} = {current_table}.{join_attrs[1]}")
                             break
                     
                     if not join_attrs:
                         # No direct join condition found, try to find a transitive one
+                        print(f"    No join condition found for {current_table} with any table in {prefix}")
                         # Skip for now, as transitive edges should be already added
                         continue
                     
                     # Calculate selectivity
-                    selectivity = self.estimate_selectivity(
-                        join_table, current_table, join_attrs, method)
+                    selectivity = self.estimate_selectivity(join_table, current_table, join_attrs, method)
+                    print(f"    Estimated selectivity: {selectivity}")
                     
                     # Try each join strategy, but favor the preferred strategy for this method
                     for strategy in strategy_preference:
                         if i == 1:
                             # Direct join between first two tables
-                            join_cost = self.estimate_join_cost(
-                                prefix[0], current_table, join_attrs, strategy, selectivity)
+                            join_cost = self.estimate_join_cost(prefix[0], current_table, join_attrs, strategy, selectivity)
                             
                             # Adjust cost slightly to favor preferred strategies
+                            original_cost = join_cost
                             if strategy == strategy_preference[0]:
                                 join_cost *= 0.9  # 10% discount for preferred strategy
                             elif strategy == strategy_preference[1]:
                                 join_cost *= 0.95  # 5% discount for second preference
+                                
+                            print(f"    Strategy {strategy}: original cost = {original_cost}, adjusted cost = {join_cost}")
                         else:
                             # Cost of joining the result of previous joins with the current table
                             prev_cost = dp_table[prefix]
-                            intermediate_rows = self.get_intermediate_result_size(
-                                prefix, join_conditions, method)
-                            join_cost = prev_cost + self.estimate_join_cost_with_intermediate(
-                                intermediate_rows, current_table, join_attrs, strategy, selectivity)
+                            intermediate_rows = self.get_intermediate_result_size(prefix, join_conditions, method)
+                            
+                            strategy_cost = self.estimate_join_cost_with_intermediate(intermediate_rows, current_table, join_attrs, strategy, selectivity)
+                            join_cost = prev_cost + strategy_cost
                             
                             # Adjust cost slightly to favor preferred strategies
+                            original_cost = join_cost
                             if strategy == strategy_preference[0]:
                                 join_cost *= 0.9  # 10% discount for preferred strategy
                             elif strategy == strategy_preference[1]:
                                 join_cost *= 0.95  # 5% discount for second preference
+                            
+                            print(f"    Strategy {strategy}: prev_cost = {prev_cost}, strategy_cost = {strategy_cost}, original total = {original_cost}, adjusted total = {join_cost}")
                         
                         if join_cost < best_prefix_cost:
                             best_prefix_cost = join_cost
                             best_strategy = strategy
+                            print(f"    --> New best strategy: {best_strategy} with cost {best_prefix_cost}")
                     
-                    dp_table[join_order[:i+1]] = best_prefix_cost
-                    dp_strategies[join_order[:i+1]] = dp_strategies.get(prefix, []) + [best_strategy]
+                    next_prefix = tuple(join_order[:i+1])  # Ensure next_prefix is a tuple
+                    dp_table[next_prefix] = best_prefix_cost
+                    dp_strategies[next_prefix] = dp_strategies.get(prefix, []) + [best_strategy]
+                    
+                    print(f"    DP table entry: {next_prefix} = {best_prefix_cost}")
+                    print(f"    DP strategies entry: {next_prefix} = {dp_strategies[next_prefix]}")
                 
                 # Check if this join order is better than previous best
-                final_cost = dp_table.get(join_order, float('inf'))
+                final_cost = dp_table.get(tuple(join_order), float('inf'))
+                print(f"\n  Final cost for join order {join_order}: {final_cost}")
+                
                 if final_cost < best_cost:
                     best_cost = final_cost
                     best_order = join_order
-                    best_strategies = dp_strategies.get(join_order, [])
+                    best_strategies = dp_strategies.get(tuple(join_order), [])
+                    print(f"  --> New best order with cost {best_cost}")
+                
+            # Print final DP table summary for this method
+            print(f"\nDP TABLE SUMMARY FOR METHOD {method}:")
+            print(f"Best join order: {best_order}")
+            print(f"Best strategies: {best_strategies}")
+            print(f"Best cost: {best_cost}")
             
             # Debug to confirm the best_order structure
             print(f"For method {method}, best_order: {best_order}, type: {type(best_order)}")
@@ -1041,10 +1071,167 @@ class QueryOptimizer:
                 'cost': best_cost
             }
         
+        # Additional summary of all best plans
+        print("\nFINAL BEST PLANS SUMMARY:")
+        for method, plan in best_plans.items():
+            print(f"Method: {method}")
+            print(f"  Best join order: {plan['order']}")
+            print(f"  Best strategies: {plan['strategies']}")
+            print(f"  Best cost: {plan['cost']}")
+        
         # self.disconnect()
 
         return best_plans
 
+
+    def alter_rel_json(self, rel_algebra_json_str: str):
+        rel_algebra_json = json.loads(rel_algebra_json_str)
+        rel_copy = copy.deepcopy(rel_algebra_json)
+        # if the top node is select, bring the project inside to top
+        # select(project(...)) -> project(select(...))
+        try:
+            if rel_copy.get('type') == 'select':
+                rel_copy = rel_algebra_json["input"]
+                temp = copy.deepcopy(rel_algebra_json["input"]["input"])
+                rel_copy["input"] = copy.deepcopy(rel_algebra_json)
+                rel_copy["input"]["input"] = temp
+        except:
+            return rel_algebra_json
+        return rel_copy
+    
+    def generate_naive_plan_json(self, naive_plan):
+        """
+        Generate a JSON representation of the naive plan with costs.
+        """                
+        naive_order = naive_plan['order']
+        naive_strategies = naive_plan['strategies']
+        naive_method = "fixed" 
+        naive_cost = naive_plan['cost'] 
+        # Create a relational algebra tree with proper accumulated costs
+        # Handle base table scan cost
+        tables_costs = {}
+        join_costs = {}
+        
+        # Calculate base table costs
+        for table in naive_order:
+            try:
+                stats = self.get_table_statistics(table)
+                tables_costs[table] = stats['page_count'] * self.seq_page_cost + stats['row_count'] * self.cpu_tuple_cost
+            except:
+                tables_costs[table] = 100  # Default
+        
+        # Calculate join costs and accumulated costs at each step
+        running_tables = [naive_order[0]]
+        running_cost = tables_costs[naive_order[0]]
+        
+        for i in range(1, len(naive_order)):
+            current_table = naive_order[i]
+            strategy = naive_strategies[i-1] if i-1 < len(naive_strategies) else "hash"
+            
+            # Find join attributes
+            join_attrs = None
+            for prev_table in running_tables:
+                if (prev_table, current_table) in self.join_conditions:
+                    join_attrs = self.join_conditions[(prev_table, current_table)]
+                    break
+                elif (current_table, prev_table) in self.join_conditions:
+                    join_attrs = self.join_conditions[(current_table, prev_table)]
+                    join_attrs = (join_attrs[1], join_attrs[0])
+                    break
+            
+            if join_attrs is None:
+                # Default if no join condition found
+                selectivity = 0.1
+            else:
+                # Use the appropriate selectivity method
+                selectivity = self.estimate_selectivity(
+                    running_tables[-1], current_table, join_attrs, naive_method)
+            
+            # Calculate intermediate result size
+            intermediate_rows = self.get_intermediate_result_size(
+                tuple(running_tables), self.join_conditions, naive_method)
+            
+            # Calculate join cost
+            if len(running_tables) == 1:
+                join_cost = self.estimate_join_cost(
+                    running_tables[0], current_table, join_attrs, strategy, selectivity)
+            else:
+                join_cost = self.estimate_join_cost_with_intermediate(
+                    intermediate_rows, current_table, join_attrs, strategy, selectivity)
+            
+            # Store join cost and update running total
+            join_costs[(tuple(running_tables), current_table)] = join_cost
+            running_cost += join_cost
+            running_tables.append(current_table)
+        
+        # Now build the JSON tree using the calculated costs
+        result = {
+            "type": "project",
+            "cost": naive_cost,  # Use the final best cost from optimization
+            "columns": [
+                {"table": "a", "attr": "id"},
+                {"table": "b", "attr": "id"},
+                {"table": "c", "attr": "id"}
+            ]
+        }
+        
+        # Build join tree with proper accumulated costs
+        current = None
+        accumulated_cost = 0
+        
+        # Create base relation node for first table
+        base_node = {
+            "type": "base_relation",
+            "cost": tables_costs[naive_order[0]],
+            "tables": [{"name": naive_order[0], "alias": naive_order[0].split('_')[-1]}]
+        }
+        
+        current = base_node
+        accumulated_cost = tables_costs[naive_order[0]]
+        
+        # Add joins according to the best order
+        for i in range(1, len(naive_order)):
+            table_name = naive_order[i]
+            strategy = naive_strategies[i-1] if i-1 < len(naive_strategies) else "hash"
+            
+            # Get the join cost for this step
+            join_cost = join_costs.get((tuple(naive_order[:i]), table_name), 0)
+            accumulated_cost += join_cost
+            
+            # Create joined table node
+            joined_table = {
+                "type": "base_relation",
+                "cost": tables_costs[table_name],
+                "tables": [{"name": table_name, "alias": table_name.split('_')[-1]}]
+            }
+            
+            # Create join node with accumulated cost
+            join_node = {
+                "type": "join",
+                "cost": accumulated_cost,
+                "strategy": strategy,
+                "condition": {
+                    "type": "EQ",
+                    "left": {
+                        "table": naive_order[0].split('_')[-1],
+                        "attr": f"join_key_{naive_order[0].split('_')[-1]}{table_name.split('_')[-1]}"
+                    },
+                    "right": {
+                        "table": table_name.split('_')[-1],
+                        "attr": f"join_key_{table_name.split('_')[-1]}{naive_order[0].split('_')[-1]}"
+                    }
+                },
+                "left": current,
+                "right": joined_table
+            }
+            
+            current = join_node
+        
+        # Set the complete tree as the input to the projection
+        result["input"] = current
+        
+        # return json.dumps(result, indent=2)
+        return current
 
 def main():
     """Example usage of the QueryOptimizer with relational algebra input."""
@@ -1061,25 +1248,50 @@ def main():
     # Read relational algebra JSON file
     with open('optimized_out.json', 'r') as f:
         opt_out_json = f.read()
+
     
     # Initialize the optimizer
     optimizer = QueryOptimizer(db_params)
     optimizer.connect()
+
+    # Fix the format of the JSON
+    rel_algebra_json = QueryOptimizer(db_params).alter_rel_json(opt_out_json)
+    opt_out_json = json.dumps(rel_algebra_json, indent=4)
     
     # Calculate naive cost
-    naive_plan = optimizer.calculate_naive_cost(opt_out_json)
+    naive_plan = copy.deepcopy(optimizer.calculate_naive_cost(opt_out_json))
 
     # Run the optimization with forced diverse strategies
     best_plans = optimizer.optimize_join_query(opt_out_json)
     
-    # Generate the JSON for the best plan
-    best_plan_json = optimizer.generate_best_plan_json(best_plans)
+        # Write the best plan JSON to a file
+    with open('best_plan.json', 'w') as f:
+        naive_inp = json.loads(opt_out_json)
+        best_plan_join_node = optimizer.generate_best_plan_json(best_plans)
+        if "input" in naive_inp:
+            if "input" in naive_inp["input"]:
+                naive_inp["input"]["input"] = best_plan_join_node
+            else:
+                naive_inp["input"] = best_plan_join_node
+        else:
+            raise ValueError("Invalid JSON structure: 'input' key not found")
+        # write it nicely with indentation
+        f.write(json.dumps(naive_inp, indent=4))
+
+    with open('naive_plan.json', 'w') as f:
+        naive_inp = json.loads(opt_out_json)
+        join_node = optimizer.generate_naive_plan_json(naive_plan)
+        if "input" in naive_inp:
+            if "input" in naive_inp["input"]:
+                naive_inp["input"]["input"] = join_node
+            else:
+                naive_inp["input"] = join_node
+        else:
+            raise ValueError("Invalid JSON structure: 'input' key not found")
+        # write it nicely with indentation
+        f.write(json.dumps(naive_inp, indent=4))
     
     optimizer.disconnect()
-
-    # Write the best plan JSON to a file
-    with open('best_plan.json', 'w') as f:
-        f.write(best_plan_json)
     
     # Print results
     print("\n===== QUERY OPTIMIZATION RESULTS =====")
@@ -1118,9 +1330,9 @@ def main():
         print(f"Cost: {plan['cost']:.2f}")
         
         # Calculate optimization improvement
-        if naive_plan and 'cost' in naive_plan and naive_plan['cost'] > 0:
-            improvement = ((naive_plan['cost'] - plan['cost']) / naive_plan['cost']) * 100
-            print(f"Improvement: {improvement:.2f}% reduction in cost")
+        # if naive_plan and 'cost' in naive_plan and naive_plan['cost'] > 0:
+        #     improvement = ((naive_plan['cost'] - plan['cost']) / naive_plan['cost']) * 100
+        #     print(f"Improvement: {improvement:.2f}% reduction in cost")
         
         print("Join Strategies:")
         if isinstance(plan['order'], (list, tuple)) and isinstance(plan['strategies'], (list, tuple)):

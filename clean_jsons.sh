@@ -1,1 +1,1 @@
-rm -f optimized_out.json best_plan.json original_out.json relational_algebra.json
+rm -f *.json
