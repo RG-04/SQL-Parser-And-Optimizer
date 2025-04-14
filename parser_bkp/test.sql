@@ -1,1 +1,0 @@
-SELECT c.name, c.product FROM customers AS c JOIN temp AS T ON c.id = t.customer_id WHERE t.val > 400 AND t.pal < bcd

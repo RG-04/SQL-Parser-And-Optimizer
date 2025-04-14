@@ -19,7 +19,7 @@
                 <button class="btn btn-outline-primary step-btn active" id="parsing-btn">1. Parsing</button>
                 <button class="btn btn-outline-primary step-btn" id="predicate-pushdown-btn" disabled>2. Predicate Pushdown</button>
                 <button class="btn btn-outline-primary step-btn" id="join-optimization-btn" disabled>3. Join Optimization</button>
-                <!-- Additional steps can be added here -->
+                <button class="btn btn-outline-primary step-btn" id="common-subexpr-btn" disabled>4. Common Subexpr Elimination</button>
             </div>
         </div>
         
@@ -102,6 +102,27 @@
                 
                 <div id="join-optimization-error" class="alert alert-danger mt-3 d-none"></div>
             </div>
+            <div class="tab-pane" id="common-subexpr-tab">
+                <h3>Common Subexpression Elimination</h3>
+                <p>This section shows the results of eliminating redundant expressions in the query plan.</p>
+                
+                <div class="alert alert-info">
+                    <strong>Optimization Step:</strong> Common Subexpression Elimination
+                </div>
+                
+                <div id="common-subexpr-result-container" class="mt-4">
+                    <!-- Common subexpression elimination visualization will be inserted here -->
+                </div>
+                
+                <div id="common-subexpr-loading" class="mt-3 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span class="ms-2">Eliminating common subexpressions...</span>
+                </div>
+                
+                <div id="common-subexpr-error" class="alert alert-danger mt-3 d-none"></div>
+            </div>
         </div>
     </div>
 
@@ -110,6 +131,7 @@
     <script src="{{ url_for('static', filename='js/graph-visualizer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/optimization-visualizer.js') }}"></script>
     <script src="{{ url_for('static', filename='js/join-optimization-visualizer.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/common-subexpr-visualizer.js') }}"></script>
     <script>
         // Example SQL query for easy testing
         const exampleQuery = `SELECT table_a.id, table_b.id
@@ -125,17 +147,23 @@ WHERE table_b.id > 1`;
             // Tab navigation
             const parsingBtn = document.getElementById('parsing-btn');
             const predicatePushdownBtn = document.getElementById('predicate-pushdown-btn');
+            const commonSubexprBtn = document.getElementById('common-subexpr-btn');
             const joinOptimizationBtn = document.getElementById('join-optimization-btn');
+            
             const parsingTab = document.getElementById('parsing-tab');
             const optimizationTab = document.getElementById('optimization-tab');
+            const commonSubexprTab = document.getElementById('common-subexpr-tab');
             const joinOptimizationTab = document.getElementById('join-optimization-tab');
             
             parsingBtn.addEventListener('click', function() {
                 parsingTab.classList.add('active');
                 optimizationTab.classList.remove('active');
+                commonSubexprTab.classList.remove('active');
                 joinOptimizationTab.classList.remove('active');
+                
                 parsingBtn.classList.add('active');
                 predicatePushdownBtn.classList.remove('active');
+                commonSubexprBtn.classList.remove('active');
                 joinOptimizationBtn.classList.remove('active');
             });
             
@@ -143,9 +171,12 @@ WHERE table_b.id > 1`;
                 if (!predicatePushdownBtn.disabled) {
                     parsingTab.classList.remove('active');
                     optimizationTab.classList.add('active');
+                    commonSubexprTab.classList.remove('active');
                     joinOptimizationTab.classList.remove('active');
+                    
                     parsingBtn.classList.remove('active');
                     predicatePushdownBtn.classList.add('active');
+                    commonSubexprBtn.classList.remove('active');
                     joinOptimizationBtn.classList.remove('active');
                     
                     // If we haven't already loaded the optimization visualization
@@ -155,13 +186,35 @@ WHERE table_b.id > 1`;
                 }
             });
             
+            commonSubexprBtn.addEventListener('click', function() {
+                if (!commonSubexprBtn.disabled) {
+                    parsingTab.classList.remove('active');
+                    optimizationTab.classList.remove('active');
+                    commonSubexprTab.classList.add('active');
+                    joinOptimizationTab.classList.remove('active');
+                    
+                    parsingBtn.classList.remove('active');
+                    predicatePushdownBtn.classList.remove('active');
+                    commonSubexprBtn.classList.add('active');
+                    joinOptimizationBtn.classList.remove('active');
+                    
+                    // Run common subexpression elimination if not already loaded
+                    if (!document.getElementById('common-subexpr-visualizer')) {
+                        runCommonSubexprElimination();
+                    }
+                }
+            });
+            
             joinOptimizationBtn.addEventListener('click', function() {
                 if (!joinOptimizationBtn.disabled) {
                     parsingTab.classList.remove('active');
                     optimizationTab.classList.remove('active');
+                    commonSubexprTab.classList.remove('active');
                     joinOptimizationTab.classList.add('active');
+                    
                     parsingBtn.classList.remove('active');
                     predicatePushdownBtn.classList.remove('active');
+                    commonSubexprBtn.classList.remove('active');
                     joinOptimizationBtn.classList.add('active');
                     
                     // Run join optimization if not already loaded

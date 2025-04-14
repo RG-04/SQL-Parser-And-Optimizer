@@ -482,6 +482,7 @@ class QueryOptimizer:
                     if parent_alias:
                         alias_map[parent_alias] = table_name
                         self.subquery_base_tables[parent_alias] = table_name
+                        print(f"Populated subquery base table mapping: {parent_alias} -> {table_name}")
                     # Map the alias directly to the table name
                     if "alias" in table:
                         alias_map[table["alias"]] = table_name
@@ -685,6 +686,7 @@ class QueryOptimizer:
         """
         # Check if we're dealing with a subquery alias
         is_subquery = table_name.startswith('tmp')
+        print(f"Getting statistics for table '{table_name}' (is subquery: {is_subquery})")
         
         if is_subquery and hasattr(self, 'subquery_base_tables') and table_name in self.subquery_base_tables:
             # Use the base table for the subquery

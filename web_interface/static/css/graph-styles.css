@@ -126,3 +126,54 @@
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     pointer-events: none;
 }
+
+.graph-image-container {
+    height: 400px;
+    background-color: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+.plan-image {
+    max-height: 380px;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+/* Styles for the common expressions section */
+#common-expressions-section {
+    margin-top: 20px;
+    background-color: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 5px;
+    padding: 15px;
+}
+
+#common-expressions-section h5 {
+    margin-top: 0;
+    color: #343a40;
+    font-size: 1.1rem;
+    margin-bottom: 15px;
+}
+
+#common-expressions-list .list-group-item {
+    margin-bottom: 10px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    padding: 15px;
+}
+
+#common-expressions-list pre {
+    font-size: 0.85rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 10px;
+    max-height: 150px;
+    overflow: auto;
+}

@@ -4,7 +4,7 @@ LDFLAGS =
 
 PROG = sql_to_ra
 OBJECTS = lex.yy.o y.tab.o main.o
-TEST_FILE = test_join.sql
+TEST_FILE = test.sql
 OUT_FILE = ../relational_algebra.json
 
 all: $(PROG)

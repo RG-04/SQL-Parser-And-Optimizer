@@ -5,6 +5,8 @@ import os
 import tempfile
 from predicate_pushdown import optimize_query_plan
 from join_optimization import QueryOptimizer
+from graph_visualizer import visualize_query_plan
+from subsequence_elim import QueryTreeOptimizer
 
 app = Flask(__name__, static_folder='static')
 
@@ -187,6 +189,34 @@ def optimize_join():
         return jsonify({
             'success': False,
             'error': f'Join optimization failed: {str(e)}'
+        })
+
+@app.route('/optimize/common_subexpr/', methods=['POST'])
+def optimize_common_subexpr():
+    print("Common subexpression elimination endpoint called: ", request.json)  
+    
+    try:
+        # Get the relational algebra JSON from the request
+        relational_algebra = request.json.get('relational_algebra', {})
+        
+        optimizer = QueryTreeOptimizer()
+        optimized_tree = optimizer.optimize_and_cleanup(relational_algebra)
+        original_plan_svg = visualize_query_plan({"query":relational_algebra})
+        optimized_plan_svg = visualize_query_plan(optimized_tree)
+
+        return jsonify({
+            'success': True,
+            'original_plan_json': relational_algebra,
+            'optimized_plan_json': optimized_tree,
+            'optimized_plan_svg': optimized_plan_svg,
+            'original_plan_svg': original_plan_svg
+        })
+            
+    except Exception as e:
+        print(f"Exception in common subexpression elimination: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Common subexpression elimination failed: {str(e)}'
         })
 
 if __name__ == '__main__':

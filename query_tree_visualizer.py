@@ -195,7 +195,7 @@ def visualize_from_json_files(original_file, optimized_file=None, output_file="q
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize query trees from JSON.")
-    parser.add_argument("original", help="Path to the original query tree JSON file")
+    parser.add_argument("-g", "--original", help="Path to the original query tree JSON file")
     parser.add_argument("-o", "--optimized", help="Path to the optimized query tree JSON file")
     parser.add_argument("-f", "--output-file", default="query_tree_viz", 
                         help="Base name for the output file (without extension)")

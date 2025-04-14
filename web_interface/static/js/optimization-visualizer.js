@@ -596,6 +596,7 @@ function runOptimization() {
                 
                 // Enable the join optimization button
                 document.getElementById('join-optimization-btn').disabled = false;
+                document.getElementById('common-subexpr-btn').disabled = false;
                 
             } catch (error) {
                 console.error("Error initializing visualizer:", error);
