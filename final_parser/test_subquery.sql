@@ -5,9 +5,9 @@ JOIN (SELECT b.id, b.join_key_ab FROM table_b b WHERE b.value = 'common_value_1'
 JOIN (SELECT b.id, b.join_key_ab FROM table_b b WHERE b.value = 'common_value_1') tmp2
   ON a.join_key_ab = tmp2.join_key_ab
 JOIN (SELECT b.id, b.join_key_ab FROM table_b b WHERE b.value = 'common_value_1') tmp3
-  ON a.join_key_ab = tmp2.join_key_ab
+  ON a.join_key_ab = tmp3.join_key_ab
 JOIN (SELECT b.id, b.join_key_ab FROM table_b b WHERE b.value = 'common_value_1') tmp4
-  ON a.join_key_ab = tmp2.join_key_ab
+  ON a.join_key_ab = tmp4.join_key_ab
 JOIN table_c c
   ON a.join_key_ac = c.join_key_ac
 WHERE a.id > 100;
