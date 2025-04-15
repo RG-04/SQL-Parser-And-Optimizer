@@ -76,25 +76,25 @@ WHERE N.N_NAME = 'UNITED STATES'
 
 
 -- Subquery with multiple joins
-SELECT o.orderkey, l.quantity, s.suppkey, c.custkey
-FROM orders o 
-JOIN customer c ON o.custkey = c.custkey
-JOIN lineitem l ON o.orderkey = l.orderkey
-JOIN supplier s ON s.suppkey = l.suppkey
-JOIN (SELECT n.nationkey, n.name FROM nation n) tmp1 ON tmp1.nationkey = c.nationkey
-JOIN (SELECT n.nationkey, n.name FROM nation n) tmp2 ON tmp2.nationkey = s.nationkey
+SELECT O.ORDERKEY, L.QUANTITY, S.SUPPKEY, C.CUSTKEY
+FROM ORDERS O 
+JOIN CUSTOMER C ON O.CUSTKEY = C.CUSTKEY
+JOIN LINEITEM L ON O.ORDERKEY = L.ORDERKEY
+JOIN SUPPLIER S ON S.SUPPKEY = L.SUPPKEY
+JOIN (SELECT N.NATIONKEY, N.NAME FROM NATION N) TMP1 ON TMP1.NATIONKEY = C.NATIONKEY
+JOIN (SELECT N.NATIONKEY, N.NAME FROM NATION N) TMP2 ON TMP2.NATIONKEY = S.NATIONKEY
 
--- Subquery with multiple joins 2
-SELECT ps.partkey, ps.supplykey
-FROM partsupp ps 
-JOIN supplier s ON ps.supplykey = s.supplykey
-JOIN lineitem l ON ps.supplykey = l.supplykey
-JOIN (SELECT p.name, p.brand FROM part p) tmp1 ON tmp1.partkey = ps.partkey
-JOIN (SELECT p.name, p.brand FROM part p) tmp2 ON tmp2.partkey = l.partkey
-WHERE ps.availqty > 10 AND s.acctbal > 1000
+-- SUBQUERY WITH MULTIPLE JOINS 2
+SELECT PS.PARTKEY, PS.SUPPLYKEY
+FROM PARTSUPP PS 
+JOIN SUPPLIER S ON PS.SUPPLYKEY = S.SUPPLYKEY
+JOIN LINEITEM L ON PS.SUPPLYKEY = L.SUPPLYKEY
+JOIN (SELECT P.NAME, P.BRAND FROM PART P) TMP1 ON TMP1.PARTKEY = PS.PARTKEY
+JOIN (SELECT P.NAME, P.BRAND FROM PART P) TMP2 ON TMP2.PARTKEY = L.PARTKEY
+WHERE PS.AVAILQTY > 10 AND S.ACCTBAL > 1000
 
--- Project before Select
-  SELECT p.partkey, p.suppkey
-  FROM partsupp p
-  JOIN supplier s ON p.suppkey = s.suppkey
-  WHERE p.availqty > 10 OR p.supplycost < 500 AND s.acctbal > 1000
+-- PROJECT BEFORE SELECT
+  SELECT P.PARTKEY, P.SUPPKEY
+  FROM PARTSUPP P
+  JOIN SUPPLIER S ON P.SUPPKEY = S.SUPPKEY
+  WHERE P.AVAILQTY > 10 OR P.SUPPLYCOST < 500 AND S.ACCTBAL > 1000
