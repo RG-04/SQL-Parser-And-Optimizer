@@ -73,3 +73,28 @@ JOIN (
 ) I ON H.SUPPLIER.S_NATIONKEY = I.SUPPLIER.S_NATIONKEY
 JOIN NATION N ON H.SUPPLIER.S_NATIONKEY = N.N_NATIONKEY
 WHERE N.N_NAME = 'UNITED STATES'
+
+
+-- Subquery with multiple joins
+SELECT o.orderkey, l.quantity, s.suppkey, c.custkey
+FROM orders o 
+JOIN customer c ON o.custkey = c.custkey
+JOIN lineitem l ON o.orderkey = l.orderkey
+JOIN supplier s ON s.suppkey = l.suppkey
+JOIN (SELECT n.nationkey, n.name FROM nation n) tmp1 ON tmp1.nationkey = c.nationkey
+JOIN (SELECT n.nationkey, n.name FROM nation n) tmp2 ON tmp2.nationkey = s.nationkey
+
+-- Subquery with multiple joins 2
+SELECT ps.partkey, ps.supplykey
+FROM partsupp ps 
+JOIN supplier s ON ps.supplykey = s.supplykey
+JOIN lineitem l ON ps.supplykey = l.supplykey
+JOIN (SELECT p.name, p.brand FROM part p) tmp1 ON tmp1.partkey = ps.partkey
+JOIN (SELECT p.name, p.brand FROM part p) tmp2 ON tmp2.partkey = l.partkey
+WHERE ps.availqty > 10 AND s.acctbal > 1000
+
+-- Project before Select
+  SELECT p.partkey, p.suppkey
+  FROM partsupp p
+  JOIN supplier s ON p.suppkey = s.suppkey
+  WHERE p.availqty > 10 OR p.supplycost < 500 AND s.acctbal > 1000

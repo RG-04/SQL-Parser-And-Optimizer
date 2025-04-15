@@ -312,6 +312,8 @@ if __name__ == "__main__":
     # calculate cost of input plan:
     cost, cardinality = optimizer.calculate_cost(opt_out_json)
 
+    print(json.dump(opt_out_json, indent=4))
+
     with open('optimized_out_with_cost.json', 'w') as f:
         json.dump(opt_out_json, f, indent=4)
     print(f"Cost: {cost}, Cardinality: {cardinality}")
