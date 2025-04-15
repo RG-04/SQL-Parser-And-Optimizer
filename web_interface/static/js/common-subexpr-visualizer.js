@@ -31,6 +31,7 @@ class CommonSubexprVisualizer {
         originalDiv.innerHTML = `
             <div class="optimization-header">
                 <h4>After Predicate Pushdown</h4>
+                <div id="original-cost-new" class="plan-cost"></div>
             </div>
             <div id="subexpr-original-img" class="graph-image-container"></div>
         `;
@@ -41,6 +42,7 @@ class CommonSubexprVisualizer {
         optimizedDiv.innerHTML = `
             <div class="optimization-header">
                 <h4>After Common Subexpression Elimination</h4>
+                <div id="optimized-cost-new" class="plan-cost"></div>
             </div>
             <div id="subexpr-optimized-img" class="graph-image-container"></div>
         `;
@@ -75,6 +77,18 @@ class CommonSubexprVisualizer {
         }
         
         try {
+            console.log("Processing optimization data:", data);
+            if (data.original_cost !== undefined) {
+                const originalCostElement = document.getElementById('original-cost-new');
+                originalCostElement.textContent = `Total Cost: ${data.original_cost}`;
+            }
+            
+            if (data.optimized_cost !== undefined) {
+                const optimizedCostElement = document.getElementById('optimized-cost-new');
+                optimizedCostElement.textContent = `Total Cost: ${data.optimized_cost}`;
+                
+            }
+
             // Display the images for original and optimized plans
             this.displayPlanImages(data.original_plan_svg, data.optimized_plan_svg);
             

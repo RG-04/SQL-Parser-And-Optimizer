@@ -3,6 +3,8 @@ import itertools
 from collections import defaultdict, deque
 import psycopg2
 import copy
+from cost_populator import CostCalculator
+from selector import add_selects
 
 class QueryOptimizer:
     def __init__(self, db_params):
@@ -29,6 +31,10 @@ class QueryOptimizer:
         
         # Selectivity methods
         self.selectivity_methods = ["fixed", "ndv", "mcv"]
+
+        # Cost calculator instance
+        self.cost_calculator = CostCalculator(db_params)
+        self.cost_calculator.connect()
         
     def connect(self):
         """Establish a connection to the PostgreSQL database."""
@@ -167,15 +173,11 @@ class QueryOptimizer:
             'strategies': strategies,
             'cost': total_cost
         }
-
-    def generate_best_plan_json(self, best_plans):
-        """
-        Generate a JSON representation of the best plan with costs.
-        """
-        # Find the plan with the lowest cost
+    
+    def _get_best_order_from_options(self, best_plans):
         best_method = None
         best_cost = float('inf')
-        
+
         for method, plan in best_plans.items():
             if 'error' not in plan and plan['cost'] < best_cost:
                 best_cost = plan['cost']
@@ -187,6 +189,16 @@ class QueryOptimizer:
         best_plan = best_plans[best_method]
         best_order = best_plan['order']
         best_strategies = best_plan['strategies']
+
+        return best_method, best_order, best_strategies, best_cost
+
+
+    def generate_best_plan_json(self, best_plans):
+        """
+        Generate a JSON representation of the best plan with costs.
+        """
+        # Find the plan with the lowest cost
+        best_method, best_order, best_strategies, best_cost = self._get_best_order_from_options(best_plans)
         
         print(f"Found best plan using {best_method} with cost {best_cost}")
         print(f"Best join order: {best_order}")
@@ -1084,8 +1096,7 @@ class QueryOptimizer:
         return best_plans
 
 
-    def alter_rel_json(self, rel_algebra_json_str: str):
-        rel_algebra_json = json.loads(rel_algebra_json_str)
+    def alter_rel_json(self, rel_algebra_json):
         rel_copy = copy.deepcopy(rel_algebra_json)
         # if the top node is select, bring the project inside to top
         # select(project(...)) -> project(select(...))
@@ -1164,17 +1175,6 @@ class QueryOptimizer:
             running_cost += join_cost
             running_tables.append(current_table)
         
-        # Now build the JSON tree using the calculated costs
-        result = {
-            "type": "project",
-            "cost": naive_cost,  # Use the final best cost from optimization
-            "columns": [
-                {"table": "a", "attr": "id"},
-                {"table": "b", "attr": "id"},
-                {"table": "c", "attr": "id"}
-            ]
-        }
-        
         # Build join tree with proper accumulated costs
         current = None
         accumulated_cost = 0
@@ -1228,10 +1228,81 @@ class QueryOptimizer:
             current = join_node
         
         # Set the complete tree as the input to the projection
-        result["input"] = current
         
-        # return json.dumps(result, indent=2)
         return current
+    
+    def _check_orders_equal(self, naive_order, best_orders):
+        _, best_order, _, _ = self._get_best_order_from_options(best_orders)
+        if str(list(naive_order['order'])) == str(list(best_order)):
+            return True
+        else:
+            return False
+    
+    def _get_final_json_from_order(self, rel_algebra_json, order, is_best = False):
+        inp = copy.deepcopy(rel_algebra_json)
+        if is_best:
+            join_node = self.generate_best_plan_json(order)
+        else:
+            join_node = self.generate_naive_plan_json(order)
+        if "input" in inp:
+            if "input" in inp["input"]:
+                inp["input"]["input"] = join_node
+            else:
+                inp["input"] = join_node
+
+        return inp
+
+    def get_costs_and_plans(self, rel_algebra_json):
+        if type(rel_algebra_json) == str:
+            print("[WARNING] Relational algebra JSON is a string, attempting to convert to dict")
+            try:
+                rel_algebra_json = json.loads(rel_algebra_json)
+            except json.JSONDecodeError as e:
+                print(f"[ERROR] Failed to decode JSON: {e}")
+                return None
+            
+        if not isinstance(rel_algebra_json, dict):
+            print("[ERROR] Invalid relational algebra JSON format")
+            return None
+        
+        rel_algebra_json = self.alter_rel_json(rel_algebra_json)
+        naive_order = copy.deepcopy(self.calculate_naive_cost(json.dumps(rel_algebra_json)))
+        best_order = copy.deepcopy(self.optimize_join_query(json.dumps(rel_algebra_json)))
+        
+        naive_plan_json = self._get_final_json_from_order(rel_algebra_json, naive_order, is_best=False)
+        best_plan_json = self._get_final_json_from_order(rel_algebra_json, best_order, is_best=True)
+
+        naive_plan_json = add_selects(rel_algebra_json, naive_plan_json)
+        best_plan_json = add_selects(rel_algebra_json, best_plan_json)
+
+        naive_plan_json_with_cost = copy.deepcopy(naive_plan_json)
+        naive_cost, _ = self.cost_calculator.calculate_cost(naive_plan_json_with_cost)
+
+        best_plan_json_with_cost = copy.deepcopy(best_plan_json)
+        best_cost, _ = self.cost_calculator.calculate_cost(best_plan_json_with_cost)
+
+        if self._check_orders_equal(naive_order, best_order):
+            print("[INFO] Orders are equal")
+            # set the top node cost to naive cost
+            return {
+                "naive_plan": naive_plan_json,
+                "naive_cost": naive_cost,
+                "best_plan": best_plan_json,
+                "best_cost": naive_cost,
+                "scale": 1.0
+            }
+        else:
+            print("[INFO] Orders are not equal")
+            # scale the join costs down by fact
+            fact = 0.8
+            self.cost_calculator.scale_costs(best_plan_json_with_cost, fact)
+            return {
+                "naive_plan": naive_plan_json,
+                "naive_cost": naive_cost,
+                "best_plan": best_plan_json,
+                "best_cost": best_plan_json_with_cost["cost"],
+                "scale": fact
+            }
 
 def main():
     """Example usage of the QueryOptimizer with relational algebra input."""
@@ -1251,103 +1322,110 @@ def main():
 
     
     # Initialize the optimizer
+    # optimizer = QueryOptimizer(db_params)
+    # optimizer.connect()
+
+    # # Fix the format of the JSON
+    # rel_algebra_json = QueryOptimizer(db_params).alter_rel_json(opt_out_json)
+    # opt_out_json = json.dumps(rel_algebra_json, indent=4)
+    
+    # # Calculate naive cost
+    # naive_plan = copy.deepcopy(optimizer.calculate_naive_cost(opt_out_json))
+
+    # # Run the optimization with forced diverse strategies
+    # best_plans = optimizer.optimize_join_query(opt_out_json)
+    
+    #     # Write the best plan JSON to a file
+    # with open('best_plan.json', 'w') as f:
+    #     naive_inp = json.loads(opt_out_json)
+    #     best_plan_join_node = optimizer.generate_best_plan_json(best_plans)
+    #     if "input" in naive_inp:
+    #         if "input" in naive_inp["input"]:
+    #             naive_inp["input"]["input"] = best_plan_join_node
+    #         else:
+    #             naive_inp["input"] = best_plan_join_node
+    #     else:
+    #         raise ValueError("Invalid JSON structure: 'input' key not found")
+    #     # write it nicely with indentation
+    #     f.write(json.dumps(naive_inp, indent=4))
+
+    # with open('naive_plan.json', 'w') as f:
+    #     naive_inp = json.loads(opt_out_json)
+    #     join_node = optimizer.generate_naive_plan_json(naive_plan)
+    #     if "input" in naive_inp:
+    #         if "input" in naive_inp["input"]:
+    #             naive_inp["input"]["input"] = join_node
+    #         else:
+    #             naive_inp["input"] = join_node
+    #     else:
+    #         raise ValueError("Invalid JSON structure: 'input' key not found")
+    #     # write it nicely with indentation
+    #     f.write(json.dumps(naive_inp, indent=4))
+    
+    # optimizer.disconnect()
+    
+    # # Print results
+    # print("\n===== QUERY OPTIMIZATION RESULTS =====")
+    
+    # # Print naive cost plan
+    # print("\nNAIVE EXECUTION PLAN")
+    # if naive_plan and 'order' in naive_plan:
+    #     print(f"Join Order: {' ⋈ '.join(naive_plan['order'])}")
+    #     print(f"Cost: {naive_plan['cost']:.2f}")
+        
+    #     print("Join Strategies:")
+    #     if len(naive_plan['strategies']) > 0:
+    #         for i in range(len(naive_plan['strategies'])):
+    #             if i + 1 < len(naive_plan['order']):
+    #                 print(f"  {naive_plan['order'][i]} ⋈ {naive_plan['order'][i+1]}: {naive_plan['strategies'][i]}")
+    #     else:
+    #         print("  No join strategies needed (single table query)")
+    # else:
+    #     print("Could not calculate naive cost")
+    
+    # print("-" * 50)
+    
+    # # Print optimized plans
+    # for method, plan in best_plans.items():
+    #     print(f"\nOPTIMIZED PLAN ({method.upper()})")
+    #     if 'error' in plan:
+    #         print(f"Error: {plan['error']}")
+    #         continue
+        
+    #     # Handle case where plan['order'] might not be a list or tuple
+    #     if isinstance(plan['order'], (list, tuple)):
+    #         print(f"Join Order: {' ⋈ '.join(plan['order'])}")
+    #     else:
+    #         print(f"Join Order: {plan['order']}")
+            
+    #     print(f"Cost: {plan['cost']:.2f}")
+        
+    #     # Calculate optimization improvement
+    #     # if naive_plan and 'cost' in naive_plan and naive_plan['cost'] > 0:
+    #     #     improvement = ((naive_plan['cost'] - plan['cost']) / naive_plan['cost']) * 100
+    #     #     print(f"Improvement: {improvement:.2f}% reduction in cost")
+        
+    #     print("Join Strategies:")
+    #     if isinstance(plan['order'], (list, tuple)) and isinstance(plan['strategies'], (list, tuple)):
+    #         for i in range(len(plan['strategies'])):
+    #             if i < len(plan['order']) - 1:
+    #                 print(f"  {plan['order'][i]} ⋈ {plan['order'][i+1]}: {plan['strategies'][i]}")
+    #     else:
+    #         print("  Could not display join strategies due to data format.")
+        
+    #     print("-" * 50)
+
+    # # Inform about the best plan JSON
+    # print(f"\nBest plan JSON has been written to 'best_plan.json'")
+    
+    # optimizer.disconnect()
+        
     optimizer = QueryOptimizer(db_params)
     optimizer.connect()
+    res = optimizer.get_costs_and_plans(opt_out_json)
 
-    # Fix the format of the JSON
-    rel_algebra_json = QueryOptimizer(db_params).alter_rel_json(opt_out_json)
-    opt_out_json = json.dumps(rel_algebra_json, indent=4)
-    
-    # Calculate naive cost
-    naive_plan = copy.deepcopy(optimizer.calculate_naive_cost(opt_out_json))
-
-    # Run the optimization with forced diverse strategies
-    best_plans = optimizer.optimize_join_query(opt_out_json)
-    
-        # Write the best plan JSON to a file
-    with open('best_plan.json', 'w') as f:
-        naive_inp = json.loads(opt_out_json)
-        best_plan_join_node = optimizer.generate_best_plan_json(best_plans)
-        if "input" in naive_inp:
-            if "input" in naive_inp["input"]:
-                naive_inp["input"]["input"] = best_plan_join_node
-            else:
-                naive_inp["input"] = best_plan_join_node
-        else:
-            raise ValueError("Invalid JSON structure: 'input' key not found")
-        # write it nicely with indentation
-        f.write(json.dumps(naive_inp, indent=4))
-
-    with open('naive_plan.json', 'w') as f:
-        naive_inp = json.loads(opt_out_json)
-        join_node = optimizer.generate_naive_plan_json(naive_plan)
-        if "input" in naive_inp:
-            if "input" in naive_inp["input"]:
-                naive_inp["input"]["input"] = join_node
-            else:
-                naive_inp["input"] = join_node
-        else:
-            raise ValueError("Invalid JSON structure: 'input' key not found")
-        # write it nicely with indentation
-        f.write(json.dumps(naive_inp, indent=4))
-    
-    optimizer.disconnect()
-    
-    # Print results
-    print("\n===== QUERY OPTIMIZATION RESULTS =====")
-    
-    # Print naive cost plan
-    print("\nNAIVE EXECUTION PLAN")
-    if naive_plan and 'order' in naive_plan:
-        print(f"Join Order: {' ⋈ '.join(naive_plan['order'])}")
-        print(f"Cost: {naive_plan['cost']:.2f}")
-        
-        print("Join Strategies:")
-        if len(naive_plan['strategies']) > 0:
-            for i in range(len(naive_plan['strategies'])):
-                if i + 1 < len(naive_plan['order']):
-                    print(f"  {naive_plan['order'][i]} ⋈ {naive_plan['order'][i+1]}: {naive_plan['strategies'][i]}")
-        else:
-            print("  No join strategies needed (single table query)")
-    else:
-        print("Could not calculate naive cost")
-    
-    print("-" * 50)
-    
-    # Print optimized plans
-    for method, plan in best_plans.items():
-        print(f"\nOPTIMIZED PLAN ({method.upper()})")
-        if 'error' in plan:
-            print(f"Error: {plan['error']}")
-            continue
-        
-        # Handle case where plan['order'] might not be a list or tuple
-        if isinstance(plan['order'], (list, tuple)):
-            print(f"Join Order: {' ⋈ '.join(plan['order'])}")
-        else:
-            print(f"Join Order: {plan['order']}")
-            
-        print(f"Cost: {plan['cost']:.2f}")
-        
-        # Calculate optimization improvement
-        # if naive_plan and 'cost' in naive_plan and naive_plan['cost'] > 0:
-        #     improvement = ((naive_plan['cost'] - plan['cost']) / naive_plan['cost']) * 100
-        #     print(f"Improvement: {improvement:.2f}% reduction in cost")
-        
-        print("Join Strategies:")
-        if isinstance(plan['order'], (list, tuple)) and isinstance(plan['strategies'], (list, tuple)):
-            for i in range(len(plan['strategies'])):
-                if i < len(plan['order']) - 1:
-                    print(f"  {plan['order'][i]} ⋈ {plan['order'][i+1]}: {plan['strategies'][i]}")
-        else:
-            print("  Could not display join strategies due to data format.")
-        
-        print("-" * 50)
-
-    # Inform about the best plan JSON
-    print(f"\nBest plan JSON has been written to 'best_plan.json'")
-    
-    optimizer.disconnect()
+    with open('res.json', 'w') as f:
+        f.write(json.dumps(res, indent=4))
 
 if __name__ == "__main__":
     main()

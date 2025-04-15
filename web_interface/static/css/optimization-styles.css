@@ -154,3 +154,35 @@
         height: 500px;
     }
 }
+
+/* Styles for the plan cost display */
+.plan-cost {
+    margin-top: 5px;
+    font-size: 0.9rem;
+    color: #495057;
+    text-align: center;
+    padding: 4px 8px;
+    background-color: #f1f3f5;
+    border-radius: 4px;
+    display: inline-block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Additional styling for the improvement text */
+#optimized-cost {
+    position: relative;
+}
+
+/* Style for the improvement percentage */
+#optimized-cost:has(::after) {
+    color: #198754;
+    font-weight: 500;
+}
+
+/* Center the cost display in the header */
+.optimization-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}

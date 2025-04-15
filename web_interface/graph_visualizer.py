@@ -2,9 +2,6 @@ import json
 from graphviz import Digraph
 
 def visualize_query_plan(query_plan):
-    """
-    Input json lega output svg dega
-    """
     graph = Digraph('QueryPlan', format='svg')
     graph.attr(rankdir='TB')
     graph.attr('node', style='filled', fontname='Helvetica', fontsize='10')

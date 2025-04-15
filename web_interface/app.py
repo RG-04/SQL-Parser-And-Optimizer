@@ -3,12 +3,27 @@ import subprocess
 import json
 import os
 import tempfile
+import copy
 from predicate_pushdown import optimize_query_plan
 from join_optimization import QueryOptimizer
 from graph_visualizer import visualize_query_plan
 from subsequence_elim import QueryTreeOptimizer
+from cost_populator import CostCalculator
 
 app = Flask(__name__, static_folder='static')
+
+db_params = {
+    'dbname': 'temp',
+    'user': 'postgres',
+    'password': 'postgres',
+    'host': 'localhost',
+    'port': '5432'
+}
+cost_calculator = CostCalculator(db_params)
+cost_calculator.connect()
+
+
+USER_STUFF = {"scale": 1.0}
 
 @app.route('/')
 def index():
@@ -75,6 +90,12 @@ def optimize_predpush():
         print("Successfully read example files")  # Debug output
         print("Optimized plan: ", optimized_plan_str)  # Debug output
         print("Original plan: ", original_plan_str)  # Debug output
+
+        USER_STUFF["original_plan_json"] = relational_algebra
+        USER_STUFF["pred_plan_json"] = optimized_plan
+        optimized_plan_with_cost = copy.deepcopy(optimized_plan)
+        optimized_cost, _ = cost_calculator.calculate_cost(optimized_plan_with_cost)
+        USER_STUFF["pred_cost"] = optimized_cost
         
         return jsonify({
             'success': True,
@@ -91,7 +112,7 @@ def optimize_predpush():
             'success': False,
             'error': f'Optimization failed: {str(e)}'
         })
-
+    
 @app.route('/optimize/join/', methods=['POST'])
 def optimize_join():
     print("Join optimization endpoint called: ", request.json)  # Debug output
@@ -113,75 +134,19 @@ def optimize_join():
         optimizer = QueryOptimizer(db_params)
         optimizer.connect()
         
-        # Calculate naive cost
-        naive_plan = optimizer.calculate_naive_cost(json.dumps(relational_algebra))
+        res = optimizer.get_costs_and_plans(USER_STUFF["pred_plan_json"])
+        USER_STUFF["join_plan_json"] = res["best_plan"]
+        USER_STUFF["join_cost"] = res["best_cost"]
+        USER_STUFF["pred_cost"] = res["naive_cost"]
+        USER_STUFF["scale"] = res["scale"]
 
-        # Run the optimization with forced diverse strategies
-        best_plans = optimizer.optimize_join_query(json.dumps(relational_algebra))
-        
-        # Generate the JSON for the best plan
-        best_plan_json = optimizer.generate_best_plan_json(best_plans)
-        naive_plan_json = optimizer.generate_naive_plan_json(naive_plan)
-        optimizer.disconnect()
-
-        # Print results
-        print("\n===== QUERY OPTIMIZATION RESULTS =====")
-        
-        # Print naive cost plan
-        print("\nNAIVE EXECUTION PLAN")
-        if naive_plan and 'order' in naive_plan:
-            print(f"Join Order: {' ⋈ '.join(naive_plan['order'])}")
-            print(f"Cost: {naive_plan['cost']:.2f}")
-            
-            print("Join Strategies:")
-            if len(naive_plan['strategies']) > 0:
-                for i in range(len(naive_plan['strategies'])):
-                    if i + 1 < len(naive_plan['order']):
-                        print(f"  {naive_plan['order'][i]} ⋈ {naive_plan['order'][i+1]}: {naive_plan['strategies'][i]}")
-            else:
-                print("  No join strategies needed (single table query)")
-        else:
-            print("Could not calculate naive cost")
-        
-        print("-" * 50)
-        
-        # Print optimized plans
-        for method, plan in best_plans.items():
-            print(f"\nOPTIMIZED PLAN ({method.upper()})")
-            if 'error' in plan:
-                print(f"Error: {plan['error']}")
-                continue
-            
-            # Handle case where plan['order'] might not be a list or tuple
-            if isinstance(plan['order'], (list, tuple)):
-                print(f"Join Order: {' ⋈ '.join(plan['order'])}")
-            else:
-                print(f"Join Order: {plan['order']}")
-                
-            print(f"Cost: {plan['cost']:.2f}")
-            
-            # Calculate optimization improvement
-            if naive_plan and 'cost' in naive_plan and naive_plan['cost'] > 0:
-                improvement = ((naive_plan['cost'] - plan['cost']) / naive_plan['cost']) * 100
-                print(f"Improvement: {improvement:.2f}% reduction in cost")
-            
-            print("Join Strategies:")
-            if isinstance(plan['order'], (list, tuple)) and isinstance(plan['strategies'], (list, tuple)):
-                for i in range(len(plan['strategies'])):
-                    if i < len(plan['order']) - 1:
-                        print(f"  {plan['order'][i]} ⋈ {plan['order'][i+1]}: {plan['strategies'][i]}")
-            else:
-                print("  Could not display join strategies due to data format.")
-            
-            print("-" * 50)
-                
-        best_plan_json = json.loads(best_plan_json)
-        naive_plan_json = json.loads(naive_plan_json)
         
         return jsonify({
             'success': True,
-            'original_plan_json': naive_plan_json,
-            'optimized_plan_json': best_plan_json,
+            'original_plan_json': res["naive_plan"],
+            'optimized_plan_json': res["best_plan"],
+            'original_cost': res["naive_cost"],
+            'optimized_cost': res["best_cost"],
         })
             
     except Exception as e:
@@ -197,22 +162,47 @@ def optimize_common_subexpr():
     
     try:
         # Get the relational algebra JSON from the request
-        relational_algebra = request.json.get('relational_algebra', {})
+
+        relational_algebra = request.json.get('relational_algebra', {}) # IGNORED for now
+        original_cost = None
+        if "pred_plan_json" in USER_STUFF:
+            # Use the predicate pushdown plan JSON if available
+            relational_algebra = USER_STUFF["pred_plan_json"]
+            original_cost = USER_STUFF["pred_cost"]
+        else:
+            relational_algebra = USER_STUFF["original_plan_json"]
         
         optimizer = QueryTreeOptimizer()
         optimized_tree = optimizer.optimize_and_cleanup(relational_algebra)
+        print("Optimized plan: ", json.dumps(optimized_tree, indent=2))  # Debug output
         original_plan_svg = visualize_query_plan({"query":relational_algebra})
         optimized_plan_svg = visualize_query_plan(optimized_tree)
+
+        if not original_cost:
+            original_cost = cost_calculator.calculate_cost(relational_algebra)
+
+        optimized_tree_with_cost = copy.deepcopy(optimized_tree)
+        optimized_cost, _ = cost_calculator.calc_subseq_cost(optimized_tree_with_cost)
+        cost_calculator.scale_costs(optimized_tree_with_cost, USER_STUFF["scale"])
+        optimized_cost *= USER_STUFF["scale"]
+        print("Optimized cost: ", optimized_cost)  # Debug output
+
+        USER_STUFF["subseq_plan_json"] = optimized_tree
+        USER_STUFF["subseq_cost"] = optimized_cost
 
         return jsonify({
             'success': True,
             'original_plan_json': relational_algebra,
             'optimized_plan_json': optimized_tree,
             'optimized_plan_svg': optimized_plan_svg,
-            'original_plan_svg': original_plan_svg
+            'original_plan_svg': original_plan_svg,
+            'original_cost': original_cost,
+            'optimized_cost': optimized_cost,
         })
             
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Exception in common subexpression elimination: {e}")
         return jsonify({
             'success': False,

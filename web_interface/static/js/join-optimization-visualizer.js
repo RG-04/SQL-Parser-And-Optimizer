@@ -32,6 +32,7 @@ class JoinOptimizationVisualizer {
         originalDiv.innerHTML = `
             <div class="optimization-header">
                 <h4>After Predicate Pushdown</h4>
+                <div id="original-cost" class="plan-cost"></div>
             </div>
             <div id="join-original-graph" class="graph-container"></div>
         `;
@@ -42,6 +43,7 @@ class JoinOptimizationVisualizer {
         optimizedDiv.innerHTML = `
             <div class="optimization-header">
                 <h4>After Join Optimization</h4>
+                <div id="optimized-cost" class="plan-cost"></div>
             </div>
             <div id="join-optimized-graph" class="graph-container"></div>
         `;
@@ -65,6 +67,18 @@ class JoinOptimizationVisualizer {
         }
         
         try {
+            // Display the costs if they are available
+            if (data.original_cost !== undefined) {
+                const originalCostElement = document.getElementById('original-cost');
+                originalCostElement.textContent = `Total Cost: ${data.original_cost}`;
+            }
+            
+            if (data.optimized_cost !== undefined) {
+                const optimizedCostElement = document.getElementById('optimized-cost');
+                optimizedCostElement.textContent = `Total Cost: ${data.optimized_cost}`;
+                
+            }
+            
             // Create containers for original and optimized graphs
             this.createOptimizationGraphs(data.original_plan_json, data.optimized_plan_json);
         } catch (error) {

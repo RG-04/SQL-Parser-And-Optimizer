@@ -1,8 +1,5 @@
 import json
-import itertools
-from collections import defaultdict, deque
 import psycopg2
-import copy 
 
 predicate_selectivity = {
     'GT': 0.5,  # e.g., id > 1
@@ -271,8 +268,6 @@ class CostCalculator:
         total_cost = cost
         for expr_id, expr in self.expr_occ.items():
             total_cost -= common_expressions[expr_id]["cost"] * (self.expr_occ[expr_id] - 1)
-
-        subseq_json["query"] = query # updated query with cost
 
         print("Net benefit: ", cost - total_cost, cost, total_cost)
         return total_cost, cardinality
