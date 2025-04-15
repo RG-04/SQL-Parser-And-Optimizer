@@ -32,6 +32,8 @@ def index():
 @app.route('/parse', methods=['POST'])
 def parse_sql():
     sql_query = request.form.get('sql_query', '')
+
+    USER_STUFF = {}
     
     if not sql_query:
         return jsonify({'error': 'Empty SQL query'})
@@ -171,9 +173,15 @@ def optimize_common_subexpr():
             original_cost = USER_STUFF["pred_cost"]
         else:
             relational_algebra = USER_STUFF["original_plan_json"]
+
+        optimize_input_json = None
+        if "join_plan_json" in USER_STUFF:
+            optimize_input_json = USER_STUFF["join_plan_json"]
+        else:
+            optimize_input_json = relational_algebra
         
         optimizer = QueryTreeOptimizer()
-        optimized_tree = optimizer.optimize_and_cleanup(relational_algebra)
+        optimized_tree = optimizer.optimize_and_cleanup(optimize_input_json)
         print("Optimized plan: ", json.dumps(optimized_tree, indent=2))  # Debug output
         original_plan_svg = visualize_query_plan({"query":relational_algebra})
         optimized_plan_svg = visualize_query_plan(optimized_tree)
@@ -184,6 +192,11 @@ def optimize_common_subexpr():
         optimized_tree_with_cost = copy.deepcopy(optimized_tree)
         optimized_cost, _ = cost_calculator.calc_subseq_cost(optimized_tree_with_cost)
         cost_calculator.scale_costs(optimized_tree_with_cost, USER_STUFF["scale"])
+
+        if len(optimized_tree["common_expressions"]) == 0:
+            optimized_cost = original_cost
+            print("No common subexpressions found. Using original cost.")
+            
         optimized_cost *= USER_STUFF["scale"]
         print("Optimized cost: ", optimized_cost)  # Debug output
 
