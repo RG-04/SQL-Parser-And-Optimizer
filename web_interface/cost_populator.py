@@ -57,7 +57,7 @@ class CostCalculator:
             self.conn.close()
             print("Disconnected from PostgreSQL database.")
 
-    def get_table_statistics(self, table_name):
+    def get_table_statistics(self, table_name: str):
         """
         Retrieve statistics for a given table.
         
@@ -68,6 +68,7 @@ class CostCalculator:
             dict: Table statistics including row count, page count, etc.
         """
         # Check if we're dealing with a subquery alias
+        table_name = table_name.lower()
         is_subquery = table_name.startswith('tmp')
         
         if is_subquery and hasattr(self, 'subquery_base_tables') and table_name in self.subquery_base_tables:

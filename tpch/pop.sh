@@ -20,6 +20,7 @@ for file in "$DATA_DIR"/*.tbl; do
     echo "Loading data into table: $table from file: $file"
     
     sudo -u postgres $PSQL -c "\copy $table FROM '$file' WITH (FORMAT TEXT, DELIMITER '|');"
+    sudo -u postgres $PSQL -c "ANALYZE $table;"
     
     if [ $? -eq 0 ]; then
         echo "Loaded $file into $table"

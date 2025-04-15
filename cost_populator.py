@@ -303,31 +303,8 @@ if __name__ == "__main__":
         'port': '5432'
     }
 
-    with open('optimized_out.json', 'r') as f:
-        opt_out_json = f.read()
-
-    opt_out_json = json.loads(opt_out_json) 
-    
-    # Initialize the optimizer
-    optimizer = CostCalculator(db_params)
-    optimizer.connect()
-
-    # calculate cost of input plan:
-    cost, cardinality = optimizer.calculate_cost(opt_out_json)
-
-    with open('optimized_out_with_cost.json', 'w') as f:
-        json.dump(opt_out_json, f, indent=4)
-    print(f"Cost: {cost}, Cardinality: {cardinality}")
-    print("JSON cost: ", opt_out_json["cost"])
-
-    SUBSEQ_FILE = "subseq_plan.json"
-    with open(SUBSEQ_FILE, 'r') as f:
-        subseq_json = f.read()
-
-    subseq_json = json.loads(subseq_json)
-
-    # calculate cost of subsequence plan:
-    subseq_cost, subseq_cardinality = optimizer.calc_subseq_cost(subseq_json)
-    print(f"Subsequence Cost: {subseq_cost}, Cardinality: {subseq_cardinality}")
+    calc = CostCalculator(db_params)
+    calc.connect()
+    print(calc.get_table_statistics("CUSTOMER"))
 
 
