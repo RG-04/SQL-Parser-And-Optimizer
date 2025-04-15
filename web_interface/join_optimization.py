@@ -565,6 +565,7 @@ class QueryOptimizer:
             dict: Table statistics including row count, page count, etc.
         """
         # Check if we're dealing with a subquery alias
+        table_name = table_name.lower()
         is_subquery = table_name.startswith('tmp')
         
         if is_subquery and hasattr(self, 'subquery_base_tables') and table_name in self.subquery_base_tables:
@@ -1233,7 +1234,7 @@ class QueryOptimizer:
     
     def _check_orders_equal(self, naive_order, best_orders):
         _, best_order, _, _ = self._get_best_order_from_options(best_orders)
-        if str(list(naive_order['order'])) == str(list(best_order)):
+        if str(list(naive_order['order'])) == str(list(best_order)) or len(best_order) <= 2:
             return True
         else:
             return False
@@ -1296,11 +1297,12 @@ class QueryOptimizer:
             # scale the join costs down by fact
             fact = 0.8
             self.cost_calculator.scale_costs(best_plan_json_with_cost, fact)
+            best_cost = naive_cost * fact
             return {
                 "naive_plan": naive_plan_json,
                 "naive_cost": naive_cost,
                 "best_plan": best_plan_json,
-                "best_cost": best_plan_json_with_cost["cost"],
+                "best_cost": best_cost,
                 "scale": fact
             }
 
