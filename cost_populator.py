@@ -10,10 +10,6 @@ predicate_selectivity = {
     'EQ': 0.1
 }
 
-tuple_io_cost = 1
-
-
-
 class CostCalculator:
     def __init__(self, db_params):
         """
@@ -181,13 +177,14 @@ class CostCalculator:
             table = node["tables"][0]
             table_name = table["name"]
             stats = self.get_table_statistics(table_name)
-            size = stats["row_count"]
-            cost = size * tuple_io_cost
+            row_size = stats["row_count"]
+            page_size = stats["page_count"]
+            cost = row_size * self.cpu_tuple_cost + page_size * self.seq_page_cost
 
             node["cost"] = cost
-            node["cardinality"] = size
+            node["cardinality"] = row_size
 
-            return cost, size
+            return cost, row_size
 
         elif node_type == "select":
             input_cost, input_size = self.calculate_cost(node["input"])
@@ -195,7 +192,7 @@ class CostCalculator:
             selectivity = predicate_selectivity.get(pred_type, 0.5)
             output_size = input_size * selectivity  
 
-            node["cost"] = input_cost + (input_size * selectivity)
+            node["cost"] = input_cost + (input_size * self.cpu_operator_cost)
             node["cardinality"] = output_size
 
             return input_cost + input_size, output_size
@@ -203,15 +200,15 @@ class CostCalculator:
         elif node_type == "project":
             input_cost, input_size = self.calculate_cost(node["input"])
 
-            node["cost"] = input_cost + input_size*0.4
+            node["cost"] = input_cost
             node["cardinality"] = input_size
 
-            return input_cost + input_size * 0.4, input_size
+            return input_cost, input_size
 
         elif node_type == "join":
             left_cost, left_size = self.calculate_cost(node["left"])
             right_cost, right_size = self.calculate_cost(node["right"])
-            join_cost = left_size * right_size
+            join_cost = left_size * right_size / max(left_size, right_size)
             output_size = join_cost / max(left_size, right_size)
 
             node["cost"] = left_cost + right_cost + join_cost
@@ -303,8 +300,31 @@ if __name__ == "__main__":
         'port': '5432'
     }
 
-    calc = CostCalculator(db_params)
-    calc.connect()
-    print(calc.get_table_statistics("CUSTOMER"))
+    with open('optimized_out.json', 'r') as f:
+        opt_out_json = f.read()
+
+    opt_out_json = json.loads(opt_out_json) 
+    
+    # Initialize the optimizer
+    optimizer = CostCalculator(db_params)
+    optimizer.connect()
+
+    # calculate cost of input plan:
+    cost, cardinality = optimizer.calculate_cost(opt_out_json)
+
+    with open('optimized_out_with_cost.json', 'w') as f:
+        json.dump(opt_out_json, f, indent=4)
+    print(f"Cost: {cost}, Cardinality: {cardinality}")
+    print("JSON cost: ", opt_out_json["cost"])
+
+    SUBSEQ_FILE = "subseq_plan.json"
+    with open(SUBSEQ_FILE, 'r') as f:
+        subseq_json = f.read()
+
+    subseq_json = json.loads(subseq_json)
+
+    # calculate cost of subsequence plan:
+    subseq_cost, subseq_cardinality = optimizer.calc_subseq_cost(subseq_json)
+    print(f"Subsequence Cost: {subseq_cost}, Cardinality: {subseq_cardinality}")
 
 

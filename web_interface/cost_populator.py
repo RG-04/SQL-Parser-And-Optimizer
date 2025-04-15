@@ -179,13 +179,14 @@ class CostCalculator:
             table = node["tables"][0]
             table_name = table["name"]
             stats = self.get_table_statistics(table_name)
-            size = stats["row_count"]
-            cost = size * tuple_io_cost
+            row_size = stats["row_count"]
+            page_size = stats["page_count"]
+            cost = row_size * self.cpu_tuple_cost + page_size * self.seq_page_cost
 
             node["cost"] = cost
-            node["cardinality"] = size
+            node["cardinality"] = row_size
 
-            return cost, size
+            return cost, row_size
 
         elif node_type == "select":
             input_cost, input_size = self.calculate_cost(node["input"])
@@ -193,7 +194,7 @@ class CostCalculator:
             selectivity = predicate_selectivity.get(pred_type, 0.5)
             output_size = input_size * selectivity  
 
-            node["cost"] = input_cost + (input_size * selectivity)
+            node["cost"] = input_cost + (input_size * self.cpu_operator_cost)
             node["cardinality"] = output_size
 
             return input_cost + input_size, output_size
@@ -201,15 +202,15 @@ class CostCalculator:
         elif node_type == "project":
             input_cost, input_size = self.calculate_cost(node["input"])
 
-            node["cost"] = input_cost + input_size*0.4
+            node["cost"] = input_cost
             node["cardinality"] = input_size
 
-            return input_cost + input_size * 0.4, input_size
+            return input_cost, input_size
 
         elif node_type == "join":
             left_cost, left_size = self.calculate_cost(node["left"])
             right_cost, right_size = self.calculate_cost(node["right"])
-            join_cost = left_size * right_size
+            join_cost = left_size * right_size / max(left_size, right_size)
             output_size = join_cost / max(left_size, right_size)
 
             node["cost"] = left_cost + right_cost + join_cost
