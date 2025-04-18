@@ -33,7 +33,8 @@ def index():
 def parse_sql():
     sql_query = request.form.get('sql_query', '')
 
-    USER_STUFF = {}
+    global USER_STUFF
+    USER_STUFF = {'scale': 1.0}  # Reset USER_STUFF for each request
     
     if not sql_query:
         return jsonify({'error': 'Empty SQL query'})
